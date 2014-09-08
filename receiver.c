@@ -35,10 +35,7 @@ int main(){
 
 	flag = 1;
 
-	copying("12345678", 5);
-	copying("a2345678", 2);
-	copying("b2345678", 3);
-	copying("wwweeeee", 4);
+
 	fclose(fp);
 
 	return 0;
