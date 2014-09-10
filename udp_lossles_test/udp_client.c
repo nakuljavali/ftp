@@ -13,6 +13,7 @@
 #include <sys/mman.h>
 #include <sys/stat.h>
 #include <fcntl.h>
+#include <pthread.h>
 
 #include "macros.h"
 #include "customhead.h"
@@ -34,11 +35,92 @@ struct sockaddr_in server_addr;
 struct hostent *host;
 
 
+void *tcp_server()
+{
+
+  int sock, connected, bytes_recieved , true = 1;
+  char recv_data[1024];
+
+  struct sockaddr_in server_addr,client_addr;
+  int element, n = 1;
+  socklen_t sin_size;
+
+  if ((sock = socket(AF_INET, SOCK_STREAM, 0)) == -1) {
+    perror("Socket");
+    exit(1);
+  }
+
+  if (setsockopt(sock,SOL_SOCKET,SO_REUSEADDR,&true,sizeof(int)) == -1) {
+    perror("Setsockopt");
+    exit(1);
+  }
+
+  server_addr.sin_family = AF_INET;
+  server_addr.sin_port = htons(TCP_PORT);
+  server_addr.sin_addr.s_addr = INADDR_ANY;
+  bzero(&(server_addr.sin_zero),8);
+
+  if (bind(sock, (struct sockaddr *)&server_addr, sizeof(struct sockaddr))
+      == -1) {
+    perror("Unable to bind");
+    exit(1);
+  }
+
+  if (listen(sock, 5) == -1) {
+    perror("Listen");
+    exit(1);
+  }
+  sin_size = sizeof(struct sockaddr_in);
+
+  connected = accept(sock, (struct sockaddr *)&client_addr,&sin_size);
+
+  printf("\n I got a connection from (%s , %d)",
+	 inet_ntoa(client_addr.sin_addr),ntohs(client_addr.sin_port));
+
+  while (1)
+    {
+
+      bytes_recieved = recv(connected,recv_data,1024,0);
+
+      recv_data[bytes_recieved] = '\0';
+
+      for (element = 0; element < MAX_ARQ_SIZE/8; element++) {
+	if ( (recv_data[element] & 0b10000000) == 128)
+	  send_by_seq_num(n*element);
+        if ( (recv_data[element] & 0b01000000) == 64)
+	  send_by_seq_num(n*element+1);
+	if ( (recv_data[element] & 0b00100000) == 32)
+	  send_udp(n*element+2);
+	if ( (recv_data[element] & 0b00010000) == 16)
+	  send_by_seq_num(n*element+3);
+	if ( (recv_data[element] & 0b00001000) == 8)
+	  send_by_seq_num(n*element+4);
+	if ( (recv_data[element] & 0b00000100) == 4)
+	  send_by_seq_num(n*element+5);
+	if ( (recv_data[element] & 0b00000010) == 2)
+	  send_by_seq_num(n*element+6);
+	if ( (recv_data[element] & 0b00000001) == 1)
+	  send_by_seq_num(n*element+7);
+
+	n += 8;
+      }
+    }
+
+  close(sock);
+  return 0;
+
+}
+
+
+
 
 
 int main(void)
 {
-    // set socket parameters
+ 
+    pthread_t tcp_thread;
+
+   // set socket parameters
     host= (struct hostent *) gethostbyname((char *)SERVER_IP);
 
 
@@ -54,7 +136,12 @@ int main(void)
     bzero(&(server_addr.sin_zero),8);
 
 
+    if(pthread_create(&tcp_thread, NULL, tcp_server, NULL)) {
 
+      fprintf(stderr, "Error creating thread\n");
+      return 1;
+
+    }
 
     //mmaped_file  = read_file_to_heap("/mnt/onegig.bin");
     mmaped_file  = read_file_to_heap("/mnt/onegig_nodeB.bin");
