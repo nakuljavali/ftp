@@ -33,17 +33,50 @@ const char *mmaped_file = NULL;
 int sock, bytes_sent = 0;
 struct sockaddr_in server_addr;
 struct hostent *host;
+int start_sending = 0;
 
+char nack_array[MAX_ARQ_SIZE];
+
+void print_array (char arr[MAX_ARQ_SIZE]) 
+{
+  int i;
+  for(i = 0; i < MAX_ARQ_SIZE; i++)
+    printf("%c,",arr[i]);
+
+}
+
+
+void print_array_count(char arr[MAX_ARQ_SIZE])
+{
+  int i,count = 0;
+  for(i = 0; i < MAX_ARQ_SIZE; i++)
+      if (arr[i]=='0')
+            count++;
+
+  printf("COUNT RECV: %d\n",count);
+  fflush(stdout);
+}
+
+void initialize_array (char arr[MAX_ARQ_SIZE])
+{
+  int i;
+  for(i = 0; i < MAX_ARQ_SIZE; i++)
+     arr[i] = '0';
+}
 
 void *tcp_server()
 {
 
-  int sock, connected, bytes_recieved , true = 1;
-  char recv_data[1024];
+  int sock, connected, true;
+  char recv_data[MAX_ARQ_SIZE];
 
   struct sockaddr_in server_addr,client_addr;
-  int element, n = 1;
   socklen_t sin_size;
+
+  int i,bytes_recv;
+  for(i = 0; i < MAX_ARQ_SIZE; i++)
+     recv_data[i] = '0';
+
 
   if ((sock = socket(AF_INET, SOCK_STREAM, 0)) == -1) {
     perror("Socket");
@@ -77,34 +110,46 @@ void *tcp_server()
   printf("\n I got a connection from (%s , %d)",
 	 inet_ntoa(client_addr.sin_addr),ntohs(client_addr.sin_port));
 
-  while (1)
+  start_sending = 1;
+
+  int total_received = 0;
+
+  while(1) {
+
+    bytes_recv = recv(connected,recv_data,MAX_ARQ_SIZE,MSG_WAITALL);
+    printf("Bytes RECEIVED %d\n",bytes_recv);
+
+
+           if (bytes_recv > 0) {
+              memcpy(nack_array,recv_data,MAX_ARQ_SIZE);
+              printf("bytes received: %d\n",bytes_recv);
+              print_array_count(recv_data);
+           }
+
+  }
+
+
+
+  /*  while (1)
     {
+      bytes_recv = 0;
+      total_received = 0;
+      while( total_received < 32768 ) {
+          bytes_recv = recv(connected,recv_data+total_received,MAX_ARQ_SIZE,0);
 
-      bytes_recieved = recv(connected,recv_data,1024,0);
+          total_received += bytes_recv;
 
-      recv_data[bytes_recieved] = '\0';
+           if (bytes_recv > 0) {
+              memcpy(nack_array,recv_data,MAX_ARQ_SIZE);
+              printf("bytes received: %d\n",bytes_recv);
+              print_array_count(recv_data);
+           }
 
-      for (element = 0; element < MAX_ARQ_SIZE/8; element++) {
-	if ( (recv_data[element] & 0b10000000) == 128)
-	  send_by_seq_num(n*element);
-        if ( (recv_data[element] & 0b01000000) == 64)
-	  send_by_seq_num(n*element+1);
-	if ( (recv_data[element] & 0b00100000) == 32)
-	  send_udp(n*element+2);
-	if ( (recv_data[element] & 0b00010000) == 16)
-	  send_by_seq_num(n*element+3);
-	if ( (recv_data[element] & 0b00001000) == 8)
-	  send_by_seq_num(n*element+4);
-	if ( (recv_data[element] & 0b00000100) == 4)
-	  send_by_seq_num(n*element+5);
-	if ( (recv_data[element] & 0b00000010) == 2)
-	  send_by_seq_num(n*element+6);
-	if ( (recv_data[element] & 0b00000001) == 1)
-	  send_by_seq_num(n*element+7);
-
-	n += 8;
       }
+      printf("TOTOAL RECEIVED %d\n",total_received);
+
     }
+  */
 
   close(sock);
   return 0;
@@ -123,6 +168,10 @@ int main(void)
    // set socket parameters
     host= (struct hostent *) gethostbyname((char *)SERVER_IP);
 
+    int j;
+    for(j = 0; j < MAX_ARQ_SIZE; j++)
+       nack_array[j] = '0';
+
 
     if ((sock = socket(AF_INET, SOCK_DGRAM, 0)) == -1)
     {
@@ -135,27 +184,36 @@ int main(void)
     server_addr.sin_addr = *((struct in_addr *)host->h_addr);
     bzero(&(server_addr.sin_zero),8);
 
-
+    
     if(pthread_create(&tcp_thread, NULL, tcp_server, NULL)) {
 
       fprintf(stderr, "Error creating thread\n");
       return 1;
 
-    }
+      }
 
     //mmaped_file  = read_file_to_heap("/mnt/onegig.bin");
     mmaped_file  = read_file_to_heap("/mnt/onegig_nodeB.bin");
     
-    assert( mmaped_file != NULL);   
+    assert( mmaped_file != NULL);
  //send_udp(12);
-	printf("\n size of udp header %ld\n",sizeof(struct myudpheader));
-	printf("\n Sending .....");
-    int i=0;
-    for(i=0;i<MAX_DATA_SIZE;i++)
-	{
-          send_by_seq_no(i);
-	}
-	printf("\n Done....");
+	printf("size of udp header %ld\n",sizeof(struct myudpheader));
+	printf("Sending .....");
+    int element;
+
+    //    start_sending = 1;
+    while(!start_sending);
+
+    while(1) {
+        for (element = 0; element < MAX_ARQ_SIZE; element++) {
+            if (nack_array[element]=='0')
+                send_by_seq_no(element);
+
+        }
+    }
+
+
+    printf("\n Done....");
     return 0;
 
 }
@@ -173,7 +231,7 @@ int send_by_seq_no(int seq_no)
     
     myudp->sequence_no = seq_no;
     memcpy(myudp->payload_data,mmaped_file+seq_no*MAX_DATA_SIZE,MAX_DATA_SIZE);
-    //printf("\nSeq no %d\n",myudp->sequence_no);
+    //    printf("Seq no %d\n",myudp->sequence_no);
     //printf("Data = %s",myudp->payload_data);
     //printf("\nMemcopied the following to data.....\n");
     //fwrite(myudp, 1 ,10, stdout );
