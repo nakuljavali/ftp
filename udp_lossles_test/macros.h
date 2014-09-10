@@ -8,5 +8,3 @@
 
 #define UDP_PORT 7654
 #define TCP_PORT 4567
-
-#define PACKET_TIME 300
