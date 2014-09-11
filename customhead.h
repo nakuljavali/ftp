@@ -20,6 +20,16 @@ struct mytcpheader {
   unsigned int nack_array[32768/16];
 };
 
+struct infoheader {
+  int size_pkt;
+  int size_file;
+  int size_batch;
+  int no_batches;
+  int no_packets;
+  int size_last_batch;
+  int size_last_packet;
+};
+
 struct mylastpacket{
   unsigned short int sequence_no;
   char payload_data[LAST_PACKET];
