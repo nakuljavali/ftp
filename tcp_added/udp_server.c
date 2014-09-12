@@ -42,11 +42,11 @@ int print_array_count(char arr[batch_size]){
 
 void *tcp_thread(void *args){
 
-    int sockfd, n, i, count, newsockfd;
-    struct sockaddr_in serv_addr, cli_addr;
+    int sockfd, n, i, count;
+    struct sockaddr_in serv_addr;
     struct hostent *server;
     struct infoheader info;
-    socklen_t clilen;
+=
 
 
     sockfd = socket(AF_INET, SOCK_STREAM, 0);
