@@ -15,9 +15,11 @@
 #include <fcntl.h>
 #include <pthread.h>
 
-#include "macros.h"
-#include "customhead.h"
+#include "../macros.h"
+#include "../customhead.h"
 #include "../log.h"
+
+#include "../myparameters.c"
 
 #define ONEGIG 8388608
 
@@ -27,20 +29,14 @@ int sock, bytes_sent = 0;
 struct sockaddr_in server_addr;
 struct hostent *host;
 int start_sending = 0;
+int current_batch = 0;
 
-char nack_array[MAX_ARQ_SIZE];
+char *nack_pointer = NULL;
 
-void print_array (char arr[MAX_ARQ_SIZE]) 
-{
-    int i;
-    for (i = 0; i < MAX_ARQ_SIZE; i++)
-        LOGDBG("%c,",arr[i]);
-}
-
-int print_array_count(char arr[MAX_ARQ_SIZE])
+int print_array_count(char arr[batch_size])
 {
     int i,count = 0;
-    for (i = 0; i < MAX_ARQ_SIZE; i++)
+    for (i = 0; i < batch_size; i++)
         if (arr[i]=='0') count++;
 
     LOGDBG("COUNT RECV: %d\n",count);
@@ -49,27 +45,22 @@ int print_array_count(char arr[MAX_ARQ_SIZE])
     return count;
 }
 
-void initialize_array (char arr[MAX_ARQ_SIZE])
+void send_udp(void* mydata)
 {
-    int i;
-    for(i = 0; i < MAX_ARQ_SIZE; i++)
-       arr[i] = '0';
-}
-
-void send_udp(struct myudpheader* mydata)
-{
-    bytes_sent = sendto(sock,(void *)mydata, sizeof(struct myudpheader), 0,(struct sockaddr *)&server_addr, sizeof(struct sockaddr));
+    bytes_sent = sendto(sock,(void *)mydata, (packet_size+2) , 0,(struct sockaddr *)&server_addr, sizeof(struct sockaddr));
 }
 
 
 int send_by_seq_no(int seq_no)
 {
-    struct myudpheader* myudp = (struct myudpheader*) malloc(sizeof(struct myudpheader));
-    
-    myudp->sequence_no = seq_no;
-    memcpy(myudp->payload_data,mmaped_file+seq_no*MAX_DATA_SIZE,MAX_DATA_SIZE);
+    if ( (current_batch == no_of_batches-1) && (seq_no == last_batch_size-1) ) packet_size=last_packet_size;
 
-    send_udp(myudp);
+    char* myudp = (char *) malloc(packet_size+2);
+   
+    memcpy(myudp,&seq_no,2);
+    memcpy(myudp+2,mmaped_file+(current_batch*batch_size)+(seq_no*packet_size),packet_size);
+
+    send_udp((void*)myudp);
     free(myudp); 
     return 0; 
 }
@@ -102,14 +93,15 @@ const char *read_file_to_heap(char *file_name)
 void *tcp_server()
 {
   int sock, connected, true;
-  char recv_data[MAX_ARQ_SIZE];
+  char recv_data[batch_size];
 
   struct sockaddr_in server_addr,client_addr;
   socklen_t sin_size;
 
   int i,bytes_recv;
+  struct infoheader *info;
 
-  for(i = 0; i < MAX_ARQ_SIZE; i++)
+  for(i = 0; i < batch_size; i++)
      recv_data[i] = '0';
 
   if ((sock = socket(AF_INET, SOCK_STREAM, 0)) == -1) {
@@ -151,15 +143,27 @@ void *tcp_server()
   LOGDBG("I got a connection from (%s , %d)\n",
 	 inet_ntoa(client_addr.sin_addr),ntohs(client_addr.sin_port));
 
+  
+  info = malloc(sizeof(struct infoheader));
+  info->size_pkt = packet_size;
+  info->size_file = filesize;
+  info->size_batch = batch_size;
+  info->no_batches = no_of_batches;
+  info->no_packets = no_of_packets;
+  info->size_last_batch = last_batch_size;
+  info->size_last_packet = last_packet_size;
+ 
+  send(connected,info,sizeof(struct infoheader), 0);
+
   start_sending = 1;
 
   while(1) {
-      bytes_recv = recv(connected,recv_data,MAX_ARQ_SIZE,MSG_WAITALL);
+      bytes_recv = recv(connected,recv_data,batch_size,MSG_WAITALL);
       if (bytes_recv > 0) {
            LOGDBG("Bytes RECEIVED %d\n",bytes_recv);
-           memcpy(nack_array,recv_data,MAX_ARQ_SIZE);
-           if (print_array_count(recv_data) == 0)
-               pthread_exit(0);
+           memcpy(nack_pointer,recv_data,batch_size);
+           if (print_array_count(recv_data) == 0) current_batch++;
+           if (current_batch == no_of_batches) pthread_exit(0);
       }
   }
 
@@ -172,10 +176,13 @@ int main(int argc, char *argv[])
 {
     pthread_t tcp_thread;
     int element,ar_set;
+    char nack_array[batch_size];
+
+    nack_pointer = nack_array;
 
     host= (struct hostent *) gethostbyname((char *)SERVER_IP);
 
-    for (ar_set = 0; ar_set < MAX_ARQ_SIZE; ar_set++)
+    for (ar_set = 0; ar_set < batch_size; ar_set++)
         nack_array[ar_set] = '0';
 
     printf("%s\n",argv[1]);
@@ -201,14 +208,15 @@ int main(int argc, char *argv[])
         LOGERR("Client/File Read\n");
     }    
 
-    LOGDBG("size of udp header %ld\n",sizeof(struct myudpheader));
     LOGDBG("Sending .....\n");
 
     while(!start_sending);
 
+    
     while(1) {
-        for (element = 0; element < MAX_ARQ_SIZE; element++) {
-            if (nack_array[element]=='0')
+      if (current_batch == batch_size-1) batch_size = last_batch_size;
+        for (element = 0; element < batch_size; element++) {
+	  if (*(nack_pointer+element)=='0')
                 send_by_seq_no(element);
         }
     }
