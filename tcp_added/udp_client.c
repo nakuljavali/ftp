@@ -140,9 +140,8 @@ void *tcp_server()
       exit(1);
   }
 
-  LOGDBG("I got a connection from (%s , %d)\n",
+  LOGDBG("I got a connection from (%s , %d)",
 	 inet_ntoa(client_addr.sin_addr),ntohs(client_addr.sin_port));
-
   
   info = malloc(sizeof(struct infoheader));
   info->size_pkt = packet_size;
@@ -152,10 +151,13 @@ void *tcp_server()
   info->no_packets = no_of_packets;
   info->size_last_batch = last_batch_size;
   info->size_last_packet = last_packet_size;
- 
-  send(connected,info,sizeof(struct infoheader), 0);
 
+  send(connected,(void*)info,sizeof(struct infoheader), 0);
+  LOGDBG("Info Packet Sent");
+  
   start_sending = 1;
+
+  LOGDBG("Listening on TCP Port, to receive nack data");
 
   while(1) {
       bytes_recv = recv(connected,recv_data,batch_size,MSG_WAITALL);
@@ -176,6 +178,8 @@ int main(int argc, char *argv[])
 {
     pthread_t tcp_thread;
     int element,ar_set;
+
+    fill_parameters(argv[1],32768,256);
     char nack_array[batch_size];
 
     nack_pointer = nack_array;
@@ -211,15 +215,27 @@ int main(int argc, char *argv[])
     LOGDBG("Sending .....\n");
 
     while(!start_sending);
-
     
     while(1) {
-      if (current_batch == batch_size-1) batch_size = last_batch_size;
+        if (current_batch == no_of_batches -1) batch_size = last_batch_size;
+        for (element = 0; element < batch_size; element++) {
+  	    if (*(nack_pointer+element)=='0') {
+                if (current_batch%2 == 0)
+                    send_by_seq_no(element);
+                else
+                    send_by_seq_no(element+32768);
+            }
+        }
+    }
+
+
+	/*
+      if (current_batch == no_of_batches -1) batch_size = last_batch_size;
         for (element = 0; element < batch_size; element++) {
 	  if (*(nack_pointer+element)=='0')
                 send_by_seq_no(element);
         }
-    }
+	*/
 
     LOGDBG("Sending Complete\n");
     return 0;

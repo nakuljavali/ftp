@@ -46,8 +46,6 @@ void *tcp_thread(void *args){
     struct sockaddr_in serv_addr;
     struct hostent *server;
     struct infoheader info;
-=
-
 
     sockfd = socket(AF_INET, SOCK_STREAM, 0);
     if (sockfd < 0) {
