@@ -188,6 +188,7 @@ int main(int argc, char *argv[])
     int element,ar_set;
 
     fill_parameters(argv[1],32768,32768);
+
     char nack_array[batch_size];
 
     nack_pointer = nack_array;
