@@ -233,7 +233,7 @@ int main(){
 
         else if(current_batch%2 == 1){
             if(batch_size < sequence_no &&  sequence_no < 2*batch_size - 1){
-                memcpy(heap_mem+(current_batch*batch_size)+(packet_size*sequence_no),recv_data+2,packet_size);
+                memcpy(heap_mem+(current_batch*batch_size)+(packet_size*sequence_no - 32768),recv_data+2,packet_size);
                 *(nack_pointer+sequence_no) = '1';   
             }
         }
