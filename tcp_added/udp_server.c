@@ -101,7 +101,6 @@ void *tcp_thread(void *args){
 
     LOGDBG("Received the info header\n");
 
-    exit(0);
 
     char nack_array[batch_size];
     char arr[batch_size];
