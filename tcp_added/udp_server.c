@@ -74,13 +74,9 @@ void *tcp_thread(void *args){
     printf("TCP client connected\n");
 
     // TCP reading the first info header
-    listen(sockfd,5);
-    clilen = sizeof(cli_addr);
-    newsockfd = accept(sockfd, (struct sockaddr *) &cli_addr, &clilen);
-    if (newsockfd < 0) 
-        LOGERR("ERROR on accept\n");
+
     
-    n = read(newsockfd,(void*)&info, sizeof(info));
+    n = read(sockfd,(void*)&info, sizeof(info));
     if (n < 0) 
         LOGERR("ERROR reading from socket\n");
 
