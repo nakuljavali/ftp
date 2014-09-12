@@ -53,13 +53,18 @@ void send_udp(void* mydata)
 
 int send_by_seq_no(int seq_no)
 {
-    if ( (current_batch == no_of_batches-1) && (seq_no == last_batch_size-1) ) packet_size=last_packet_size;
-
+    if(current_batch%2 ==0)
+      {if ( (current_batch == no_of_batches-1) && (seq_no == last_batch_size-1) ) packet_size=last_packet_size;}
+    else 
+      {if ( (current_batch == no_of_batches-1) && (seq_no-batch_size == last_batch_size-1) ) packet_size=last_packet_size; }
     char* myudp = (char *) malloc(packet_size+2);
    
     memcpy(myudp,&seq_no,2);
-    memcpy(myudp+2,mmaped_file+(current_batch*batch_size)+(seq_no*packet_size),packet_size);
 
+    if(current_batch%2 == 0)
+      memcpy(myudp+2,mmaped_file+(current_batch*batch_size*packet_size)+(seq_no*packet_size),packet_size);
+    else if(current_batch%2 == 1)
+      memcpy(myudp+2,mmaped_file+(current_batch*batch_size*packet_size)+((seq_no-batch_size)*packet_size),packet_size);
     send_udp((void*)myudp);
     free(myudp); 
     return 0; 
@@ -187,7 +192,7 @@ int main(int argc, char *argv[])
     pthread_t tcp_thread;
     int element,ar_set;
 
-    fill_parameters(argv[1],32768,32768);
+    fill_parameters(argv[1],32768,16384);
 
     char nack_array[batch_size];
 
