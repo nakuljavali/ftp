@@ -148,6 +148,7 @@ void *tcp_thread(void *args){
 
         if (0 == count){
 
+            current_batch++;
             if(current_batch == no_of_batches){
                 stop_flag = 1;
                 close(sockfd);
@@ -160,7 +161,7 @@ void *tcp_thread(void *args){
                         arr[i] = '0';
             }
 
-            current_batch++;
+
         }
 
     }
