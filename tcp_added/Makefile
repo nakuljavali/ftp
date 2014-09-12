@@ -4,3 +4,4 @@ run :
 clean :
 	rm -f client
 	rm -f server
+	rm -f /mnt/output_nodeb.bin

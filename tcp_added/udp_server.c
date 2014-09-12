@@ -12,6 +12,7 @@
 #include <assert.h>
 #include <netdb.h>
 #include <pthread.h>
+#include <sys/time.h>
 
 #include "../macros.h"
 #include "../customhead.h"
@@ -19,6 +20,7 @@
 
 #include "../myparameters.c"
 
+struct timeval  tv1, tv2,tv3;
 
 pthread_t tcp_client;
 pthread_mutex_t lock = PTHREAD_MUTEX_INITIALIZER;
@@ -129,9 +131,10 @@ void *tcp_thread(void *args){
         }
 
         if (count < 2000)
-           usleep (2000*1500); 
+          // usleep (2000*1500); 
+           usleep(count*1 +PACKET_TIME);
         else
-           usleep(count* PACKET_TIME);
+           usleep(count*1 +PACKET_TIME);
 
         pthread_mutex_lock(&lock);
         memcpy(&arr,nack_pointer,batch_size);
@@ -154,6 +157,7 @@ void *tcp_thread(void *args){
 
         if (0 == count){
 
+           // n = send(sockfd, (void*)&arr, sizeof(arr), 0);
             current_batch++;
             if(current_batch == no_of_batches){
                 stop_flag = 1;
@@ -165,9 +169,10 @@ void *tcp_thread(void *args){
                 for (i = 0; i < batch_size; i++) {
                     nack_array[i] = '0';
                         arr[i] = '0';
-            }
 
-		usleep(10000000);
+	    }
+
+		usleep(100);
 
         }
 
@@ -228,13 +233,19 @@ int main(){
 
     char recv_data[packet_size+2];
     int sequence_no = 0;
-
+    int starttime = 1;
     //printf("starting to receive\n");
 
     while (1){
 
         bytes_read = recvfrom(sock,recv_data,packet_size+2, 0,(struct sockaddr *)&client_addr, &addr_len);
       
+
+	 if(starttime)
+          {
+                gettimeofday(&tv1, NULL);
+                starttime = 0;
+          }
         //printf("Seq_no received = %d", recv_payload->sequence_no);
         //fflush(stdout);
         memcpy(&sequence_no,recv_data,2);
@@ -270,13 +281,19 @@ int main(){
 
         
         if(stop_flag){
-            printf("Writing to file\n");
+            gettimeofday(&tv3, NULL);
+	    printf("Writing to file\n");
             fwrite(heap_mem,1,filesize,fp);
+  	    gettimeofday(&tv2, NULL);
             fclose(fp);
-            exit(0);
+	    break;
+           // exit(0);
         }
 
 
     }
+    printf ("File writing time = %f seconds\n",(double) (tv2.tv_usec - tv3.tv_usec) / 1000000 +(double) (tv2.tv_sec - tv3.tv_sec));
+    printf ("Total time = %f seconds\n",(double) (tv2.tv_usec - tv1.tv_usec) / 1000000 +(double) (tv2.tv_sec - tv1.tv_sec));	
+
     return 0;
 }
