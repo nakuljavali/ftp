@@ -19,6 +19,9 @@
 
 #include "../myparameters.c"
 
+#define UPPER_LIMIT 0.2
+#define LOWER_LIMIT 0.15
+
 pthread_t tcp_client;
 pthread_mutex_t lock = PTHREAD_MUTEX_INITIALIZER;
 struct mytcpheader head = {""};
@@ -26,6 +29,7 @@ char arr[batch_size];
 int stop_flag = 0;
 int current_batch = 0;
 char *nack_pointer = NULL;
+
 
 int print_array_count(char arr[batch_size]){
 	int i,count = 0;
@@ -44,6 +48,7 @@ void *tcp_thread(void *args){
     int sockfd, n, i, count;
     struct sockaddr_in serv_addr;
     struct hostent *server;
+    struct infoheader info;
 
     sockfd = socket(AF_INET, SOCK_STREAM, 0);
     if (sockfd < 0) {
@@ -68,6 +73,42 @@ void *tcp_thread(void *args){
     }
 
     printf("TCP client connected\n");
+
+    // TCP reading the first info header
+    listen(sockfd,5);
+    clilen = sizeof(cli_addr);
+    newsockfd = accept(sockfd, (struct sockaddr *) &cli_addr, &clilen);
+    if (newsockfd < 0) 
+        LOGERR("ERROR on accept\n");
+    
+    n = read(newsockfd,(void*)&info, sizeof(info));
+    if (n < 0) 
+        LOGERR("ERROR reading from socket\n");
+
+
+
+    packet_size = info.size_pkt;
+    filesize = info.size_file;
+    no_of_packets = info.no_packets;
+    batch_size = info.size_batch;
+    no_of_batches = info.no_batches;
+    last_batch_size = info.size_last_batch;
+    last_packet_size = info.size_last_packet;
+
+    LOGDBG("packtet size : %d\n", packet_size);
+    LOGDBG("file size : %d\n", filesize );
+    LOGDBG("batch size : %d\n", batch_size);
+    LOGDBG("no_batches : %d\n", no_of_batches);
+    LOGDBG("no_packets : %d\n", no_of_packets);
+    LOGDBG("size_last_batch : %d\n", last_batch_size);
+    LOGDBG("size_last_packet : %d\n", last_packet_size);
+
+    LOGDBG("Received the info header\n")
+
+    exit(0);
+
+    char nack_array[batch_size];
+
 
     while(1){
 
@@ -95,13 +136,23 @@ void *tcp_thread(void *args){
         }
 
     	if (0 == count){
-    		stop_flag = 1;
-    		close(sockfd);
-    		pthread_exit(0);
+
+            if(current_batch == no_of_batches){
+                stop_flag = 1;
+                close(sockfd);
+                pthread_exit(0);
+            }
+
+    		if(current_batch == no_of_batches - 1) batch_size = last_batch_size;
+                for (i = 0; i < batch_size; i++) {
+                    nack_array[i] = '0';
+                        arr[i] = '0';
+            }
+
+    		current_batch++;
     	}
 
     }
-    close(sockfd);
 
 }
 
@@ -141,7 +192,7 @@ int main(){
         exit(1);
     }
 
-        addr_len = sizeof(struct sockaddr);
+    addr_len = sizeof(struct sockaddr);
 		
 	printf("UDP Server Waiting for client\n");
         fflush(stdout);
@@ -151,7 +202,7 @@ int main(){
 	char *heap_mem = (char *)malloc((filesize));
 
 
-        char recv_data[packet_size+2];
+    char recv_data[packet_size+2];
 	int sequence_no = 0;
 
     //printf("starting to receive\n");
@@ -160,19 +211,33 @@ int main(){
 
 		bytes_read = recvfrom(sock,recv_data,packet_size+2, 0,(struct sockaddr *)&client_addr, &addr_len);
 	  
-
-		// struct myudpheader* recv_payload = (struct myudpheader*)(recv_data);
-
         //printf("Seq_no received = %d", recv_payload->sequence_no);
 	    //fflush(stdout);
+        memcpy(&sequence_no,recv_data,2);
 
-	   
-        	memcpy(&sequence_no,recv_data,2);
-		memcpy(heap_mem+(current_batch*batch_size)+(packet_size*sequence_no),recv_data+2,packet_size);
+        if (current_batch == no_of_batches - 1) {
+            batch_size = last_batch_size;
+		    if(sequence_no == last_batch_size - 1)
+                packet_size = last_packet_size;
+        }
 
 
-		*(nack_pointer+sequence_no) = '1';
-    
+        if(current_batch%2 == 0){
+            if(0 < sequence_no < batch_size -1){
+                memcpy(heap_mem+(current_batch*batch_size)+(packet_size*sequence_no),recv_data+2,packet_size);
+                *(nack_pointer+sequence_no) = '1';
+                
+            }
+        }
+
+        else if(current_batch%2 == 1){
+            if(batch_size < sequence_no < 2*batch_size - 1){
+                memcpy(heap_mem+(current_batch*batch_size)+(packet_size*sequence_no),recv_data+2,packet_size);
+                *(nack_pointer+sequence_no) = '1';   
+            }
+        }
+
+        
 	    if(stop_flag){
 	    	printf("Writing to file\n");
 		    fwrite(heap_mem,1,filesize,fp);
