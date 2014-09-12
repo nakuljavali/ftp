@@ -39,7 +39,7 @@ int print_array_count(char arr[batch_size])
     for (i = 0; i < batch_size; i++)
         if (arr[i]=='0') count++;
 
-    LOGDBG("COUNT RECV: %d\n",count);
+    //    LOGDBG("COUNT RECV: %d",count);
     fflush(stdout);
     
     return count;
@@ -162,10 +162,18 @@ void *tcp_server()
   while(1) {
       bytes_recv = recv(connected,recv_data,batch_size,MSG_WAITALL);
       if (bytes_recv > 0) {
-           LOGDBG("Bytes RECEIVED %d\n",bytes_recv);
+	//           LOGDBG("Bytes RECEIVED %d",bytes_recv);
            memcpy(nack_pointer,recv_data,batch_size);
+
+           int i;
+           i = print_array_count(recv_data);
+           printf("ARRAY RECEIVED OF COUNT %d\n",i);
+
            if (print_array_count(recv_data) == 0) current_batch++;
-           if (current_batch == no_of_batches) pthread_exit(0);
+           if (current_batch == no_of_batches) {
+              exit(1);
+              pthread_exit(0);
+           }
       }
   }
 
@@ -179,7 +187,7 @@ int main(int argc, char *argv[])
     pthread_t tcp_thread;
     int element,ar_set;
 
-    fill_parameters(argv[1],32768,256);
+    fill_parameters(argv[1],32768,32768);
     char nack_array[batch_size];
 
     nack_pointer = nack_array;
@@ -219,11 +227,13 @@ int main(int argc, char *argv[])
     while(1) {
         if (current_batch == no_of_batches -1) batch_size = last_batch_size;
         for (element = 0; element < batch_size; element++) {
+	  //        	LOGDBG("Current Batch %d, Current Seq %d",current_batch,element);
   	    if (*(nack_pointer+element)=='0') {
                 if (current_batch%2 == 0)
                     send_by_seq_no(element);
                 else
-                    send_by_seq_no(element+32768);
+                    send_by_seq_no(element+batch_size);
+
             }
         }
     }
