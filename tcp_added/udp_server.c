@@ -26,6 +26,7 @@ int stop_flag = 0;
 int current_batch = 0;
 char *nack_pointer = NULL;
 int batch_set_flag = 0;
+int create_array_flag =0;
 
 
 int print_array_count(char arr[batch_size]){
@@ -99,23 +100,30 @@ void *tcp_thread(void *args){
 
     LOGDBG("Received the info header\n");
 
-
+    while(!create_array_flag);
     char nack_array[batch_size];
     char arr[batch_size];
     nack_pointer = nack_array;
 
     for (i = 0; i < batch_size; i++) {
         arr[i] = '0';
+        nack_array[i]= '0';
     }
+
+
+    print_array_count(nack_pointer);
+
 
     while(1){
 
         pthread_mutex_lock(&lock);
         memcpy(&arr,nack_pointer,batch_size);
         pthread_mutex_unlock(&lock);
+        print_array_count(nack_pointer);
+
 
         count = 0;
-        for(i =0; i<sizeof(arr); i++){
+        for(i =0; i< batch_size; i++){
             if (arr[i]=='0')
                 count++;
         }
@@ -125,6 +133,11 @@ void *tcp_thread(void *args){
         pthread_mutex_lock(&lock);
         memcpy(&arr,nack_pointer,batch_size);
         pthread_mutex_unlock(&lock);
+
+        LOGDBG("After sending");
+        print_array_count(arr);
+        LOGDBG("BATCH: %d", batch_size);
+
 
         n = send(sockfd, (void*)&arr, sizeof(arr), 0);
 
@@ -173,9 +186,11 @@ int main(){
     char nack_array[batch_size];
     nack_pointer = nack_array;
 
+
     for (i = 0; i < batch_size; i++) {
         nack_array[i] = '0';
     }
+    create_array_flag =1;
 
     if((sock = socket(AF_INET, SOCK_DGRAM, 0)) == -1){
         LOGERR("ERROR creating UDP socket\n");
@@ -227,13 +242,12 @@ int main(){
             if(0 < sequence_no && sequence_no < batch_size -1){
                 memcpy(heap_mem+(current_batch*batch_size)+(packet_size*sequence_no),recv_data+2,packet_size);
                 *(nack_pointer+sequence_no) = '1';
-                
             }
         }
 
         else if(current_batch%2 == 1){
             if(batch_size < sequence_no &&  sequence_no < 2*batch_size - 1){
-                memcpy(heap_mem+(current_batch*batch_size)+(packet_size*sequence_no - 32768),recv_data+2,packet_size);
+                memcpy(heap_mem+(current_batch*batch_size)+(packet_size*sequence_no - batch_size),recv_data+2,packet_size);
                 *(nack_pointer+sequence_no) = '1';   
             }
         }
