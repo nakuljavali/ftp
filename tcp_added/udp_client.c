@@ -228,15 +228,6 @@ int main(int argc, char *argv[])
         }
     }
 
-
-	/*
-      if (current_batch == no_of_batches -1) batch_size = last_batch_size;
-        for (element = 0; element < batch_size; element++) {
-	  if (*(nack_pointer+element)=='0')
-                send_by_seq_no(element);
-        }
-	*/
-
     LOGDBG("Sending Complete\n");
     return 0;
 }

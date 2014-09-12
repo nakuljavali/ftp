@@ -28,7 +28,7 @@ int last_packet_size = 0;
 
 void  fill_parameters(char *input_file,int pkt_size,int bch_size)
 {
-	int file=0, no_of_packets = 0;
+	int file=0;
      	if((file=open(input_file,O_RDONLY)) < -1)
             exit(1);
  
