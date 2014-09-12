@@ -30,6 +30,7 @@ struct sockaddr_in server_addr;
 struct hostent *host;
 int start_sending = 0;
 int current_batch = 0;
+int reset_flag = 0;
 
 char *nack_pointer = NULL;
 
@@ -173,8 +174,11 @@ void *tcp_server()
            int i;
            i = print_array_count(recv_data);
            printf("ARRAY RECEIVED OF COUNT %d\n",i);
+           if (i == 0)reset_flag = 1; 
 
            if (print_array_count(recv_data) == 0) current_batch++;
+           printf("Current batch %d\n",current_batch);
+
            if (current_batch == no_of_batches) {
               exit(1);
               pthread_exit(0);
@@ -192,7 +196,7 @@ int main(int argc, char *argv[])
     pthread_t tcp_thread;
     int element,ar_set;
 
-    fill_parameters(argv[1],32768,16384);
+    fill_parameters(argv[1],32768,8192);
 
     char nack_array[batch_size];
 
@@ -233,7 +237,13 @@ int main(int argc, char *argv[])
     while(1) {
         if (current_batch == no_of_batches -1) batch_size = last_batch_size;
         for (element = 0; element < batch_size; element++) {
-	  //        	LOGDBG("Current Batch %d, Current Seq %d",current_batch,element);
+            if (reset_flag == 1) {
+	      element = 0;
+              reset_flag = 0;
+              printf("resetting flag\n");
+              printf("new batch: %d\n",current_batch);
+            }
+	    //         	LOGDBG("Current Batch %d, Current Seq %d",current_batch,element);
   	    if (*(nack_pointer+element)=='0') {
                 if (current_batch%2 == 0)
                     send_by_seq_no(element);

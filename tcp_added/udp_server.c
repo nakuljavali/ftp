@@ -28,7 +28,6 @@ char *nack_pointer = NULL;
 int batch_set_flag = 0;
 int create_array_flag =0;
 
-
 int print_array_count(char arr[batch_size]){
     int i,count = 0;
     for(i = 0; i < batch_size; i++)
@@ -36,6 +35,7 @@ int print_array_count(char arr[batch_size]){
             count++;
 
     LOGDBG("COUNT: %d\n",count);
+    printf("current batch: %d\n",current_batch);
     fflush(stdout);
     
     return count;
@@ -128,16 +128,22 @@ void *tcp_thread(void *args){
                 count++;
         }
 
-        usleep(count* PACKET_TIME);
+        if (count < 2000)
+           usleep (2000*1500); 
+        else
+           usleep(count* PACKET_TIME);
 
         pthread_mutex_lock(&lock);
         memcpy(&arr,nack_pointer,batch_size);
         pthread_mutex_unlock(&lock);
 
         LOGDBG("After sending");
+        count = 0;
+        for(i =0; i< batch_size; i++){
+            if (arr[i]=='0')
+                count++;
+        }
         print_array_count(arr);
-        LOGDBG("BATCH: %d", batch_size);
-
 
         n = send(sockfd, (void*)&arr, sizeof(arr), 0);
 
@@ -161,6 +167,7 @@ void *tcp_thread(void *args){
                         arr[i] = '0';
             }
 
+		usleep(10000000);
 
         }
 
@@ -253,7 +260,9 @@ int main(){
         }
 
         else if(current_batch%2 == 1){
+	  printf("Seq no: %d\n",sequence_no);
             if(batch_size <= sequence_no &&  sequence_no <= 2*batch_size - 1){
+              printf("Here\n");
 	      memcpy(heap_mem+(current_batch*batch_size*packet_size)+(packet_size*(sequence_no - batch_size)),recv_data+2,packet_size);
                 *(nack_pointer+(sequence_no-batch_size)) = '1';   
             }
