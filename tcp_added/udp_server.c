@@ -59,11 +59,12 @@ int print_array_count(char arr[batch_size]){
 
 void got_packet(u_char *args, const struct pcap_pkthdr *header, const u_char *packet)
 {
-  char* recv_data = (char *)(packet + 42 + 20 + 8);
+  char* recv_data = (char *)(packet + 14 + 20 + 8);
   packet_counter++;  
 
        memcpy(&sequence_no,recv_data,2);
 
+       printf("seq no %d\n",sequence_no);
 
         if (current_batch == no_of_batches - 1) {
             batch_size = last_batch_size;
@@ -177,43 +178,7 @@ void *receiver_pcap(void *args)
 
   return NULL;
 }
-/*
-void *receiver(void *args)
-{
-    int sock;
-    socklen_t addr_len;
-    int bytes_read = 0;
 
-    struct sockaddr_in server_addr , client_addr;
-  
-    if((sock = socket(AF_INET, SOCK_DGRAM, 0)) == -1){
-        LOGERR("ERROR creating UDP socket\n");
-        exit(1);
-    }
-
-    server_addr.sin_family = AF_INET;
-    server_addr.sin_port = htons(UDP_PORT);
-    server_addr.sin_addr.s_addr = INADDR_ANY;
-    bzero(&(server_addr.sin_zero),8);
-
-    if (bind(sock,(struct sockaddr *)&server_addr,sizeof(struct sockaddr)) == -1){
-        LOGERR("ERROR binding UDP socket\n");
-        exit(1);
-    }
-
-    addr_len = sizeof(struct sockaddr);
-        
-    printf("UDP Server Waiting for client\n");
-        fflush(stdout);
-
-   while(1)
-   {
-      recvfrom(sock,data_buffer,packet_size+2, 0,(struct sockaddr *)&client_addr, &addr_len);
-      packet_counter++;      
-   }
-
-}
-*/
 void *tcp_thread(void *args){
 
     int sockfd, n, i, count;
@@ -302,10 +267,9 @@ void *tcp_thread(void *args){
         }
 
         if (count < 2000)
-          // usleep (2000*1500); 
-           usleep(count*1 +PACKET_TIME);
+           usleep (2000*1500); 
         else
-           usleep(count*1 +PACKET_TIME);
+           usleep(count*PACKET_TIME);
 
         pthread_mutex_lock(&lock);
         memcpy(&arr,nack_pointer,batch_size);
@@ -381,74 +345,10 @@ int main(){
     }
     create_array_flag =1;
 
-    
-
-
-    //char recv_data[packet_size+2];
-    //printf("starting to receive\n");
-
-
-//    if(pthread_create(&recv_thread, NULL, receiver,"udp receiver thread") != 0){
-  //      LOGERR("ERROR creating receiver thread");
-  //      exit(1);
-  //  }
-
     if(pthread_create(&recv_thread_pcap, NULL, receiver_pcap,"udp receiver thread") != 0){
         LOGERR("ERROR creating pcap receiver thread");
         exit(1);
     }
     pthread_join(recv_thread_pcap,NULL);
-/*
-
-    while (0){
-
-      //        bytes_read = recvfrom(sock,recv_data,packet_size+2, 0,(struct sockaddr *)&client_addr, &addr_len);
-      
-
-        //printf("Seq_no received = %d", recv_payload->sequence_no);
-        //fflush(stdout);
-        memcpy(&sequence_no,recv_data,2);
-
-        if (current_batch == no_of_batches - 1) {
-            batch_size = last_batch_size;
-	    if(current_batch%2 == 0){
-	      if(sequence_no == last_batch_size - 1)
-                packet_size = last_packet_size;
-	    }
-	    else if(current_batch%2 ==1){
-	      if((sequence_no-batch_size) == last_batch_size - 1)
-                packet_size = last_packet_size;
-	    }
-        }
-
-
-        if(current_batch%2 == 0){
-            if(0 <= sequence_no && sequence_no <= batch_size -1){
-                memcpy(heap_mem+(current_batch*batch_size*packet_size)+(packet_size*sequence_no),recv_data+2,packet_size);
-                *(nack_pointer+sequence_no) = '1';
-            }
-            total_packets_received++;
-        }
-        else if(current_batch%2 == 1){
-	  printf("Seq no: %d\n",sequence_no);
-            if(batch_size <= sequence_no &&  sequence_no <= 2*batch_size - 1){
-              printf("Here\n");
-	      memcpy(heap_mem+(current_batch*batch_size*packet_size)+(packet_size*(sequence_no - batch_size)),recv_data+2,packet_size);
-                *(nack_pointer+(sequence_no-batch_size)) = '1';   
-            }
-            total_packets_received++;
-        }
-
-        
-        if(stop_flag){
-	    printf("Writing to file\n");
-            fwrite(heap_mem,1,filesize,fp);
-            fclose(fp);
-            exit(0);
-        }
-
-
-    }
-*/
     return 0;
 }
