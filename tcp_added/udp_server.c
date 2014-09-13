@@ -35,11 +35,13 @@ int total_packets_received = 0;
 
 int packet_counter = 0;
 
+int sequence_no=0;
+
+
 //############################################
 //##########Receiver Thread Parameters########
     FILE *fp = NULL;
     char *heap_mem = NULL;
-    int sequence_no = 0;
 //############################################
 
 
@@ -60,77 +62,43 @@ int print_array_count(char arr[batch_size]){
 void got_packet(u_char *args, const struct pcap_pkthdr *header, const u_char *packet)
 {
   char* recv_data = (char *)(packet + 14 + 20 + 8);
+
   packet_counter++;  
-
        memcpy(&sequence_no,recv_data,2);
-
        printf("seq no %d\n",sequence_no);
 
         if (current_batch == no_of_batches - 1) {
             batch_size = last_batch_size;
-
             if(current_batch%2 == 0){
-
-              if(sequence_no == last_batch_size - 1)
-
-                packet_size = last_packet_size;
-
-            }
-
-            else if(current_batch%2 ==1){
-
+              if(sequence_no == last_batch_size - 1) packet_size = last_packet_size;
+            } else if(current_batch%2 ==1){
               if((sequence_no-batch_size) == last_batch_size - 1)
-
                 packet_size = last_packet_size;
-
             }
-
         }
+
         if(current_batch%2 == 0){
-
             if(0 <= sequence_no && sequence_no <= batch_size -1){
-
                 memcpy(heap_mem+(current_batch*batch_size*packet_size)+(packet_size*sequence_no),recv_data+2,packet_size);
-
                 *(nack_pointer+sequence_no) = '1';
-
             }
 
             total_packets_received++;
 
         }
         else if(current_batch%2 == 1){
-
-          printf("Seq no: %d\n",sequence_no);
-
             if(batch_size <= sequence_no &&  sequence_no <= 2*batch_size - 1){
-
-              printf("Here\n");
-
               memcpy(heap_mem+(current_batch*batch_size*packet_size)+(packet_size*(sequence_no - batch_size)),recv_data+2,packet_size);
-
-                *(nack_pointer+(sequence_no-batch_size)) = '1';
-
+              *(nack_pointer+(sequence_no-batch_size)) = '1';
             }
-
             total_packets_received++;
-
         }
 
-
-
-    
-
         if(stop_flag){
-
             printf("Writing to file\n");
-
             fwrite(heap_mem,1,filesize,fp);
-
             fclose(fp);
-
             exit(0);
-
         }
 
 
@@ -153,7 +121,7 @@ void *receiver_pcap(void *args)
   char filter_exp[] = "udp port 7654";
   struct bpf_program fp;/* compiled filter program (expression) */
 
-  handle = pcap_open_live(dev, (packet_size+2), 1, 1000, errbuf);
+  handle = pcap_open_live(dev, 65536, 0, 2000, errbuf);
   if (handle == NULL) {
   fprintf(stderr, "Couldn't open device %s: %s\n", dev, errbuf);
   exit(EXIT_FAILURE);
@@ -315,40 +283,33 @@ void *tcp_thread(void *args){
     }
 
 }
-
 int main(){
-    //int sock
-    int i;
-    //socklen_t addr_len;
-    int bytes_read = 0;
+  int i;
+  int bytes_read = 0;
+
+  bytes_read = bytes_read;
+
+  if(pthread_create(&tcp_client, NULL, tcp_thread, "tcp_client") != 0){
+    LOGERR("ERROR creating TCP thread\n");
+    exit(1);
+  }
+
+  while(!batch_set_flag);
+
+  char nack_array[batch_size];
+  nack_pointer = malloc(sizeof(nack_array));
 
 
-    fp = fopen("/mnt/output_nodeb.bin","w");
-    assert(fp != NULL);
-    //struct sockaddr_in server_addr , client_addr;
-    bytes_read = bytes_read;
+  for (i = 0; i < batch_size; i++) {
+    nack_array[i] = '0';
+  }
+  create_array_flag =1;
 
+  if(pthread_create(&recv_thread_pcap, NULL, receiver_pcap,"udp receiver thread") != 0){
+    LOGERR("ERROR creating pcap receiver thread");
+    exit(1);
+  }
+  pthread_join(recv_thread_pcap,NULL);
 
-    if(pthread_create(&tcp_client, NULL, tcp_thread, "tcp_client") != 0){
-        LOGERR("ERROR creating TCP thread\n");
-        exit(1);
-    }
-
-    while(!batch_set_flag);
-
-    char nack_array[batch_size];
-    nack_pointer = nack_array;
-
-
-    for (i = 0; i < batch_size; i++) {
-        nack_array[i] = '0';
-    }
-    create_array_flag =1;
-
-    if(pthread_create(&recv_thread_pcap, NULL, receiver_pcap,"udp receiver thread") != 0){
-        LOGERR("ERROR creating pcap receiver thread");
-        exit(1);
-    }
-    pthread_join(recv_thread_pcap,NULL);
-    return 0;
+  return 0;
 }

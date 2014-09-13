@@ -198,7 +198,7 @@ int main(int argc, char *argv[])
     pthread_t tcp_thread;
     int element,ar_set;
 
-    fill_parameters(argv[1],32768,8192);
+    fill_parameters(argv[1],32762,8192);
 
     char nack_array[batch_size];
 
