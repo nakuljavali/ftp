@@ -34,7 +34,15 @@ int create_array_flag =0;
 int total_packets_received = 0;
 
 int packet_counter = 0;
-char* data_buffer = NULL;
+
+//############################################
+//##########Receiver Thread Parameters########
+    FILE *fp = NULL;
+    char *heap_mem = NULL;
+    int sequence_no = 0;
+//############################################
+
+
 
 int print_array_count(char arr[batch_size]){
     int i,count = 0;
@@ -49,34 +57,109 @@ int print_array_count(char arr[batch_size]){
     return count;
 }
 
-void
-got_packet(u_char *args, const struct pcap_pkthdr *header, const u_char *packet)
+void got_packet(u_char *args, const struct pcap_pkthdr *header, const u_char *packet)
 {
-  packet = (u_char *)(packet + 14 + 28 + 8);
+  char* recv_data = (char *)(packet + 42 + 20 + 8);
   packet_counter++;  
+
+       memcpy(&sequence_no,recv_data,2);
+
+
+        if (current_batch == no_of_batches - 1) {
+            batch_size = last_batch_size;
+
+            if(current_batch%2 == 0){
+
+              if(sequence_no == last_batch_size - 1)
+
+                packet_size = last_packet_size;
+
+            }
+
+            else if(current_batch%2 ==1){
+
+              if((sequence_no-batch_size) == last_batch_size - 1)
+
+                packet_size = last_packet_size;
+
+            }
+
+        }
+        if(current_batch%2 == 0){
+
+            if(0 <= sequence_no && sequence_no <= batch_size -1){
+
+                memcpy(heap_mem+(current_batch*batch_size*packet_size)+(packet_size*sequence_no),recv_data+2,packet_size);
+
+                *(nack_pointer+sequence_no) = '1';
+
+            }
+
+            total_packets_received++;
+
+        }
+        else if(current_batch%2 == 1){
+
+          printf("Seq no: %d\n",sequence_no);
+
+            if(batch_size <= sequence_no &&  sequence_no <= 2*batch_size - 1){
+
+              printf("Here\n");
+
+              memcpy(heap_mem+(current_batch*batch_size*packet_size)+(packet_size*(sequence_no - batch_size)),recv_data+2,packet_size);
+
+                *(nack_pointer+(sequence_no-batch_size)) = '1';
+
+            }
+
+            total_packets_received++;
+
+        }
+
+
+
+    
+
+        if(stop_flag){
+
+            printf("Writing to file\n");
+
+            fwrite(heap_mem,1,filesize,fp);
+
+            fclose(fp);
+
+            exit(0);
+
+        }
+
 
 }
 
 void *receiver_pcap(void *args)
 {
+
+  // intialize udp parameters 
+
+  
+
+  while(!batch_set_flag); // wait until the  parameters are received from the client
+  heap_mem = (char *)malloc((filesize));
+
   char *dev = "eth0";
   char errbuf[PCAP_ERRBUF_SIZE];
   pcap_t *handle;
 
   char filter_exp[] = "udp port 7654";
   struct bpf_program fp;/* compiled filter program (expression) */
-  bpf_u_int32 mask;/* subnet mask */
-  bpf_u_int32 net;/* ip */
-  int num_packets = 10;/* number of packets to capture */
 
-  handle = pcap_open_live(dev, 65000, 1, 1000, errbuf);
+  handle = pcap_open_live(dev, (packet_size+2), 1, 1000, errbuf);
   if (handle == NULL) {
   fprintf(stderr, "Couldn't open device %s: %s\n", dev, errbuf);
   exit(EXIT_FAILURE);
   }
 
   /* compile the filter expression */
-  if (pcap_compile(handle, &fp, filter_exp, 0, net) == -1) {
+  if (pcap_compile(handle, &fp, filter_exp, 0, 0) == -1) {
     fprintf(stderr, "Couldn't parse filter %s: %s\n",
 	    filter_exp, pcap_geterr(handle));
     exit(EXIT_FAILURE);
@@ -92,8 +175,9 @@ void *receiver_pcap(void *args)
   /* now we can set our callback function */
   pcap_loop(handle, -1 , got_packet, NULL);
 
+  return NULL;
 }
-
+/*
 void *receiver(void *args)
 {
     int sock;
@@ -129,7 +213,7 @@ void *receiver(void *args)
    }
 
 }
-
+*/
 void *tcp_thread(void *args){
 
     int sockfd, n, i, count;
@@ -269,11 +353,15 @@ void *tcp_thread(void *args){
 }
 
 int main(){
-    int sock,i;
-    socklen_t addr_len;
+    //int sock
+    int i;
+    //socklen_t addr_len;
     int bytes_read = 0;
 
-    struct sockaddr_in server_addr , client_addr;
+
+    fp = fopen("/mnt/output_nodeb.bin","w");
+    assert(fp != NULL);
+    //struct sockaddr_in server_addr , client_addr;
     bytes_read = bytes_read;
 
 
@@ -294,38 +382,29 @@ int main(){
     create_array_flag =1;
 
     
-    FILE *fp = fopen("/mnt/output_nodeb.bin","w");
-    assert(fp != NULL);
-    char *heap_mem = (char *)malloc((filesize));
 
 
-    char recv_data[packet_size+2];
-    int sequence_no = 0;
-    int starttime = 1;
+    //char recv_data[packet_size+2];
     //printf("starting to receive\n");
 
-    data_buffer = recv_data;
 
-    if(pthread_create(&recv_thread, NULL, receiver,"udp receiver thread") != 0){
-        LOGERR("ERROR creating receiver thread");
-        exit(1);
-    }
+//    if(pthread_create(&recv_thread, NULL, receiver,"udp receiver thread") != 0){
+  //      LOGERR("ERROR creating receiver thread");
+  //      exit(1);
+  //  }
 
     if(pthread_create(&recv_thread_pcap, NULL, receiver_pcap,"udp receiver thread") != 0){
         LOGERR("ERROR creating pcap receiver thread");
         exit(1);
     }
+    pthread_join(recv_thread_pcap,NULL);
+/*
 
-    while (1){
+    while (0){
 
       //        bytes_read = recvfrom(sock,recv_data,packet_size+2, 0,(struct sockaddr *)&client_addr, &addr_len);
       
 
-	 if(starttime)
-          {
-                gettimeofday(&tv1, NULL);
-                starttime = 0;
-          }
         //printf("Seq_no received = %d", recv_payload->sequence_no);
         //fflush(stdout);
         memcpy(&sequence_no,recv_data,2);
@@ -362,19 +441,14 @@ int main(){
 
         
         if(stop_flag){
-            gettimeofday(&tv3, NULL);
 	    printf("Writing to file\n");
             fwrite(heap_mem,1,filesize,fp);
-  	    gettimeofday(&tv2, NULL);
             fclose(fp);
-	    break;
-           // exit(0);
+            exit(0);
         }
 
 
     }
-    printf ("File writing time = %f seconds\n",(double) (tv2.tv_usec - tv3.tv_usec) / 1000000 +(double) (tv2.tv_sec - tv3.tv_sec));
-    printf ("Total time = %f seconds\n",(double) (tv2.tv_usec - tv1.tv_usec) / 1000000 +(double) (tv2.tv_sec - tv1.tv_sec));	
-
+*/
     return 0;
 }
