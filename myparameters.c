@@ -28,6 +28,7 @@ int last_packet_size = 0;
 
 void  fill_parameters(char *input_file,int pkt_size,int bch_size)
 {
+
 	int file=0;
      	if((file=open(input_file,O_RDONLY)) < -1)
             exit(1);
@@ -40,23 +41,59 @@ void  fill_parameters(char *input_file,int pkt_size,int bch_size)
 	filesize = fileStat.st_size;
 	packet_size = pkt_size;
 	batch_size = bch_size;
-	if(filesize < packet_size)
-        {
-	no_of_packets = 1;
-	last_batch_size = 1;
-	last_packet_size = packet_size;
-	batch_size = 1;
+
+
+	if(filesize < packet_size){
+		no_of_batches = 1;
+		no_of_packets = 1;
+		last_batch_size = 1;
+		last_packet_size = filesize;
+		batch_size = 1;
 	}
-	else 
-	{
-	no_of_packets = filesize / packet_size;
-	if (no_of_packets < batch_size) {batch_size = no_of_packets; no_of_batches = 1;}
-	else {no_of_batches = no_of_packets / batch_size;}
-        if(no_of_packets % batch_size == 0) last_batch_size = batch_size;
-        if(filesize % packet_size == 0) last_packet_size = packet_size;
-	last_batch_size = no_of_packets -  no_of_batches * batch_size;
-	last_packet_size = filesize - no_of_packets * packet_size;
-	}
+
+	else {
+		no_of_packets = filesize / packet_size;
+		if(filesize%packet_size !=0)
+			no_of_packets++;
+		printf("batch size: %d\n", batch_size);
+		printf("no of packets: %d\n", no_of_packets);
+
+		if (no_of_packets <= batch_size) {
+			batch_size = no_of_packets;
+			no_of_batches = 1;
+			last_batch_size = batch_size;
+			if(filesize%packet_size != 0)
+				last_packet_size = filesize%packet_size;
+			else
+				last_packet_size = packet_size;
+			printf("here\n");
+
+		}
+
+
+		else {
+			no_of_batches = no_of_packets / batch_size;
+
+			if(no_of_packets%batch_size != 0)
+				no_of_batches++;
+
+	        if(no_of_packets % batch_size == 0){
+
+
+	        	last_batch_size = batch_size;
+	        }
+	        else{
+	        	last_batch_size = no_of_packets % batch_size;
+
+	        }
+
+	        if(filesize % packet_size == 0)
+	        	last_packet_size = packet_size;
+	        else
+	        	last_packet_size = filesize%packet_size;
+
+		}
+}
 
 	printf("Information for %s\n",input_file);
    	printf("---------------------------\n");
