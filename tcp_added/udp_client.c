@@ -44,11 +44,22 @@ struct sockaddr_in ack_server;
 socklen_t addr_len;
 
 
-void *ack_server (void *args)
+int print_array_count(char arr[batch_size])
+
 {
 
+    int i,count = 0;
 
-  
+    for (i = 0; i < batch_size; i++)
+        if (arr[i]=='0') count++;
+    fflush(stdout);
+    return count;
+
+}
+
+
+void *ack_thread()
+{  
   char recv_data[batch_size+4];
   char temp_buff[batch_size+4];	
   ack_sock = socket(AF_INET, SOCK_DGRAM, 0);
@@ -93,7 +104,7 @@ void *ack_server (void *args)
 			batch_size = last_batch_size;
 			previous = last_batch_size;
 		}	
-                printf("Batch changed; current batch \n",current_batch);
+                printf("Batch changed; current batch %d \n",current_batch);
            }
 	   else if(i < previous)
 	   {
@@ -105,17 +116,6 @@ void *ack_server (void *args)
 
 }
 
-int print_array_count(char arr[batch_size])
-{
-    int i,count = 0;
-    for (i = 0; i < batch_size; i++)
-        if (arr[i]=='0') count++;
-
-    //    LOGDBG("COUNT RECV: %d",count);
-    fflush(stdout);
-    
-    return count;
-}
 
 void send_udp(void* mydata)
 {
@@ -281,7 +281,7 @@ void *tcp_server()
 
 int main(int argc, char *argv[])
 {
-  pthread_t tcp_thread,ack_thread;
+    pthread_t tcp_thread,ack_server_thread;
     int element,ar_set;
 
     fill_parameters(argv[1],1452,8192);
@@ -313,7 +313,7 @@ int main(int argc, char *argv[])
         return 1;
     }
     
-    if (pthread_create(&ack_thread, NULL, ack_client, NULL)) {
+    if (pthread_create(&ack_server_thread, NULL, ack_thread, NULL)) {
         fprintf(stderr, "Error creating thread\n");
         return 1;
     }
@@ -326,7 +326,6 @@ int main(int argc, char *argv[])
 
     LOGDBG("Sending .....\n");
 
-    while(!start_sending);
 
     int count = 0;
     
@@ -342,9 +341,14 @@ int main(int argc, char *argv[])
 	    //         	LOGDBG("Current Batch %d, Current Seq %d",current_batch,element);
   	    if (*(nack_pointer+element)=='0') {
                 if (current_batch%2 == 0)
-                    send_by_seq_no(element);
+                    {	printf("current batch %d ,Sent seq no %d\n",current_batch,element);
+			send_by_seq_no(element);
+		    }
                 else
-                    send_by_seq_no(element+batch_size);
+                    {
+			send_by_seq_no(element+batch_size);
+                    	printf("current batch %d, Sent seq no %d\n",current_batch,element+batch_size);
+		   }
 
 		//		usleep(10);
            }
