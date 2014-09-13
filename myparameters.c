@@ -49,11 +49,11 @@ void  fill_parameters(char *input_file,int pkt_size,int bch_size)
 	}
 	else 
 	{
+	no_of_packets = filesize / packet_size;
 	if (no_of_packets < batch_size) {batch_size = no_of_packets; no_of_batches = 1;}
 	else {no_of_batches = no_of_packets / batch_size;}
         if(no_of_packets % batch_size == 0) last_batch_size = batch_size;
         if(filesize % packet_size == 0) last_packet_size = packet_size;
-	no_of_packets = filesize / packet_size;
 	last_batch_size = no_of_packets -  no_of_batches * batch_size;
 	last_packet_size = filesize - no_of_packets * packet_size;
 	}
