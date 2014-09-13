@@ -14,6 +14,8 @@
 #include <pthread.h>
 #include <sys/time.h>
 
+#include <pcap.h>
+
 #include "../macros.h"
 #include "../customhead.h"
 #include "../log.h"
@@ -22,13 +24,17 @@
 
 struct timeval  tv1, tv2,tv3;
 
-pthread_t tcp_client;
+pthread_t tcp_client,recv_thread,recv_thread_pcap;
 pthread_mutex_t lock = PTHREAD_MUTEX_INITIALIZER;
 int stop_flag = 0;
 int current_batch = 0;
 char *nack_pointer = NULL;
 int batch_set_flag = 0;
 int create_array_flag =0;
+int total_packets_received = 0;
+
+int packet_counter = 0;
+char* data_buffer = NULL;
 
 int print_array_count(char arr[batch_size]){
     int i,count = 0;
@@ -41,6 +47,87 @@ int print_array_count(char arr[batch_size]){
     fflush(stdout);
     
     return count;
+}
+
+void
+got_packet(u_char *args, const struct pcap_pkthdr *header, const u_char *packet)
+{
+  packet = (u_char *)(packet + 14 + 28 + 8);
+  packet_counter++;  
+
+}
+
+void *receiver_pcap(void *args)
+{
+  char *dev = "eth0";
+  char errbuf[PCAP_ERRBUF_SIZE];
+  pcap_t *handle;
+
+  char filter_exp[] = "udp port 7654";
+  struct bpf_program fp;/* compiled filter program (expression) */
+  bpf_u_int32 mask;/* subnet mask */
+  bpf_u_int32 net;/* ip */
+  int num_packets = 10;/* number of packets to capture */
+
+  handle = pcap_open_live(dev, 65000, 1, 1000, errbuf);
+  if (handle == NULL) {
+  fprintf(stderr, "Couldn't open device %s: %s\n", dev, errbuf);
+  exit(EXIT_FAILURE);
+  }
+
+  /* compile the filter expression */
+  if (pcap_compile(handle, &fp, filter_exp, 0, net) == -1) {
+    fprintf(stderr, "Couldn't parse filter %s: %s\n",
+	    filter_exp, pcap_geterr(handle));
+    exit(EXIT_FAILURE);
+  }
+
+  /* apply the compiled filter */
+  if (pcap_setfilter(handle, &fp) == -1) {
+    fprintf(stderr, "Couldn't install filter %s: %s\n",
+	    filter_exp, pcap_geterr(handle));
+    exit(EXIT_FAILURE);
+  }
+
+  /* now we can set our callback function */
+  pcap_loop(handle, -1 , got_packet, NULL);
+
+}
+
+void *receiver(void *args)
+{
+    int sock;
+    socklen_t addr_len;
+    int bytes_read = 0;
+
+    struct sockaddr_in server_addr , client_addr;
+  
+    if((sock = socket(AF_INET, SOCK_DGRAM, 0)) == -1){
+        LOGERR("ERROR creating UDP socket\n");
+        exit(1);
+    }
+
+    server_addr.sin_family = AF_INET;
+    server_addr.sin_port = htons(UDP_PORT);
+    server_addr.sin_addr.s_addr = INADDR_ANY;
+    bzero(&(server_addr.sin_zero),8);
+
+    if (bind(sock,(struct sockaddr *)&server_addr,sizeof(struct sockaddr)) == -1){
+        LOGERR("ERROR binding UDP socket\n");
+        exit(1);
+    }
+
+    addr_len = sizeof(struct sockaddr);
+        
+    printf("UDP Server Waiting for client\n");
+        fflush(stdout);
+
+   while(1)
+   {
+      recvfrom(sock,data_buffer,packet_size+2, 0,(struct sockaddr *)&client_addr, &addr_len);
+      packet_counter++;      
+   }
+
 }
 
 void *tcp_thread(void *args){
@@ -141,6 +228,7 @@ void *tcp_thread(void *args){
         pthread_mutex_unlock(&lock);
 
         LOGDBG("After sending");
+        printf("packet received: %d\n",packet_counter);      
         count = 0;
         for(i =0; i< batch_size; i++){
             if (arr[i]=='0')
@@ -205,26 +293,6 @@ int main(){
     }
     create_array_flag =1;
 
-    if((sock = socket(AF_INET, SOCK_DGRAM, 0)) == -1){
-        LOGERR("ERROR creating UDP socket\n");
-        exit(1);
-    }
-
-    server_addr.sin_family = AF_INET;
-    server_addr.sin_port = htons(UDP_PORT);
-    server_addr.sin_addr.s_addr = INADDR_ANY;
-    bzero(&(server_addr.sin_zero),8);
-
-
-    if (bind(sock,(struct sockaddr *)&server_addr,sizeof(struct sockaddr)) == -1){
-        LOGERR("ERROR binding UDP socket\n");
-        exit(1);
-    }
-
-    addr_len = sizeof(struct sockaddr);
-        
-    printf("UDP Server Waiting for client\n");
-        fflush(stdout);
     
     FILE *fp = fopen("/mnt/output_nodeb.bin","w");
     assert(fp != NULL);
@@ -236,9 +304,21 @@ int main(){
     int starttime = 1;
     //printf("starting to receive\n");
 
+    data_buffer = recv_data;
+
+    if(pthread_create(&recv_thread, NULL, receiver,"udp receiver thread") != 0){
+        LOGERR("ERROR creating receiver thread");
+        exit(1);
+    }
+
+    if(pthread_create(&recv_thread_pcap, NULL, receiver_pcap,"udp receiver thread") != 0){
+        LOGERR("ERROR creating pcap receiver thread");
+        exit(1);
+    }
+
     while (1){
 
-        bytes_read = recvfrom(sock,recv_data,packet_size+2, 0,(struct sockaddr *)&client_addr, &addr_len);
+      //        bytes_read = recvfrom(sock,recv_data,packet_size+2, 0,(struct sockaddr *)&client_addr, &addr_len);
       
 
 	 if(starttime)
@@ -268,8 +348,8 @@ int main(){
                 memcpy(heap_mem+(current_batch*batch_size*packet_size)+(packet_size*sequence_no),recv_data+2,packet_size);
                 *(nack_pointer+sequence_no) = '1';
             }
+            total_packets_received++;
         }
-
         else if(current_batch%2 == 1){
 	  printf("Seq no: %d\n",sequence_no);
             if(batch_size <= sequence_no &&  sequence_no <= 2*batch_size - 1){
@@ -277,6 +357,7 @@ int main(){
 	      memcpy(heap_mem+(current_batch*batch_size*packet_size)+(packet_size*(sequence_no - batch_size)),recv_data+2,packet_size);
                 *(nack_pointer+(sequence_no-batch_size)) = '1';   
             }
+            total_packets_received++;
         }
 
         

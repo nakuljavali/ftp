@@ -31,6 +31,7 @@ struct hostent *host;
 int start_sending = 0;
 int current_batch = 0;
 int reset_flag = 0;
+int total_packets_sent = 0;
 
 char *nack_pointer = NULL;
 
@@ -177,8 +178,9 @@ void *tcp_server()
            if (i == 0)reset_flag = 1; 
 
            if (print_array_count(recv_data) == 0) current_batch++;
-           printf("Current batch %d\n",current_batch);
+           printf("Current batch: %d\n",current_batch);
 
+           printf("Total packet count: %d\n",total_packets_sent);
            if (current_batch == no_of_batches) {
               exit(1);
               pthread_exit(0);
@@ -249,6 +251,8 @@ int main(int argc, char *argv[])
                     send_by_seq_no(element);
                 else
                     send_by_seq_no(element+batch_size);
+
+		total_packets_sent++;
 
             }
         }
