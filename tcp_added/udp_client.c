@@ -24,6 +24,7 @@
 #define ONEGIG 8388608
 
 const char *mmaped_file = NULL;
+int recv_data;
 
 int sock, bytes_sent = 0;
 struct sockaddr_in server_addr;
@@ -33,6 +34,40 @@ int current_batch = 0;
 int reset_flag = 0;
 
 char *nack_pointer = NULL;
+
+int latest_count = 0;
+
+void *ack_client (void *args)
+{
+  int ack_sock;
+  struct sockaddr_in ack_client;
+  socklen_t addr_len;
+
+  ack_sock = socket(AF_INET, SOCK_DGRAM, 0);
+
+  ack_client.sin_family = AF_INET;
+  ack_client.sin_port = htons(ACK_PORT);
+  ack_client.sin_addr.s_addr = INADDR_ANY;
+  bzero(&(server_addr.sin_zero),8);
+
+    if (bind(ack_sock,(struct sockaddr *)&ack_client,sizeof(struct sockaddr)) == -1){
+        LOGERR("ERROR binding UDP socket\n");
+        exit(1);
+    }
+    addr_len = sizeof(struct sockaddr);
+
+
+    printf("Ack Server\n");
+
+    while(1) {
+      recvfrom(ack_sock,&recv_data,sizeof(int), 0,(struct sockaddr *)&ack_client, &addr_len);
+      //      printf("%d\n",recv_data);
+        printf("%d\n",recv_data);
+        usleep(10000);
+
+    }
+
+}
 
 int print_array_count(char arr[batch_size])
 {
@@ -54,6 +89,7 @@ void send_udp(void* mydata)
 
 int send_by_seq_no(int seq_no)
 {
+    int i=0;
     if(current_batch%2 ==0)
       {if ( (current_batch == no_of_batches-1) && (seq_no == last_batch_size-1) ) packet_size=last_packet_size;}
     else 
@@ -66,7 +102,17 @@ int send_by_seq_no(int seq_no)
       memcpy(myudp+2,mmaped_file+(current_batch*batch_size*packet_size)+(seq_no*packet_size),packet_size);
     else if(current_batch%2 == 1)
       memcpy(myudp+2,mmaped_file+(current_batch*batch_size*packet_size)+((seq_no-batch_size)*packet_size),packet_size);
-    send_udp((void*)myudp);
+
+
+    if (latest_count < 400)
+      for (i = 0; i < 5;i++) {
+        bytes_sent = sendto(sock,(void *)myudp, (packet_size+2) , 0,(struct sockaddr *)&server_addr, sizeof(struct sockaddr));
+        usleep(100);
+      }
+    else
+        bytes_sent = sendto(sock,(void *)myudp, (packet_size+2) , 0,(struct sockaddr *)&server_addr, sizeof(struct sockaddr));
+       
+   //    send_udp((void*)myudp);
     free(myudp); 
     return 0; 
 }
@@ -174,10 +220,16 @@ void *tcp_server()
            int i;
            i = print_array_count(recv_data);
            printf("ARRAY RECEIVED OF COUNT %d\n",i);
-           if (i == 0)reset_flag = 1; 
 
-           if (print_array_count(recv_data) == 0) current_batch++;
+           if (i == 0) {
+                reset_flag = 1;
+                current_batch++;
+                printf("Flag reset \n");
+           }
+           latest_count = i;
+
            printf("Current batch %d\n",current_batch);
+
 
            if (current_batch == no_of_batches) {
               exit(1);
@@ -193,10 +245,10 @@ void *tcp_server()
 
 int main(int argc, char *argv[])
 {
-    pthread_t tcp_thread;
+  pthread_t tcp_thread,ack_thread;
     int element,ar_set;
 
-    fill_parameters(argv[1],32768,8192);
+    fill_parameters(argv[1],1452,8192);
 
     char nack_array[batch_size];
 
@@ -224,6 +276,12 @@ int main(int argc, char *argv[])
         fprintf(stderr, "Error creating thread\n");
         return 1;
     }
+    
+    if (pthread_create(&ack_thread, NULL, ack_client, NULL)) {
+        fprintf(stderr, "Error creating thread\n");
+        return 1;
+    }
+    
 
     mmaped_file  = read_file_to_heap(argv[1]);
     if (mmaped_file == NULL) {
@@ -233,16 +291,18 @@ int main(int argc, char *argv[])
     LOGDBG("Sending .....\n");
 
     while(!start_sending);
+
+    int count = 0;
     
     while(1) {
         if (current_batch == no_of_batches -1) batch_size = last_batch_size;
         for (element = 0; element < batch_size; element++) {
-            if (reset_flag == 1) {
+	              if (reset_flag == 1) {
 	      element = 0;
               reset_flag = 0;
               printf("resetting flag\n");
               printf("new batch: %d\n",current_batch);
-            }
+	      }
 	    //         	LOGDBG("Current Batch %d, Current Seq %d",current_batch,element);
   	    if (*(nack_pointer+element)=='0') {
                 if (current_batch%2 == 0)
@@ -250,7 +310,8 @@ int main(int argc, char *argv[])
                 else
                     send_by_seq_no(element+batch_size);
 
-            }
+		//		usleep(10);
+           }
         }
     }
 

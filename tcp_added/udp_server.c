@@ -12,6 +12,7 @@
 #include <assert.h>
 #include <netdb.h>
 #include <pthread.h>
+#include <errno.h>
 
 #include "../macros.h"
 #include "../customhead.h"
@@ -20,13 +21,68 @@
 #include "../myparameters.c"
 
 
-pthread_t tcp_client;
+pthread_t tcp_client,ack_server_thread;
 pthread_mutex_t lock = PTHREAD_MUTEX_INITIALIZER;
 int stop_flag = 0;
 int current_batch = 0;
 char *nack_pointer = NULL;
 int batch_set_flag = 0;
 int create_array_flag =0;
+int tcp_flag = 0;
+
+int range[5]={0,0,0,0,0};
+
+void *ack_thread(void *args) {
+  int acksock,true;
+    socklen_t addr_len;
+    int bytes_read = 0;
+    struct hostent *host;
+
+    int num = 0;
+
+    struct sockaddr_in ack_server;
+
+    host= (struct hostent *) gethostbyname((char*)"10.1.1.2");
+
+    if((acksock = socket(AF_INET, SOCK_DGRAM, 0)) == -1){
+        LOGERR("ERROR creating UDP socket\n");
+        exit(1);
+    }
+
+    ack_server.sin_family = AF_INET;
+    ack_server.sin_port = htons(ACK_PORT);
+    ack_server.sin_addr = *((struct in_addr *)host->h_addr);
+    bzero(&(ack_server.sin_zero),8);
+
+
+
+  if (setsockopt(acksock,SOL_SOCKET,SO_REUSEADDR,&true,sizeof(int)) == -1) {
+      perror("Setsockopt");
+      LOGERR("Client/TCP/Socket/Reuseaddr");
+      exit(1);
+  }
+
+  /*    if (bind(acksock,(struct sockaddr *)&ack_server,sizeof(struct sockaddr)) == -1){
+        perror("socket error");
+	printf("%s\n", strerror(errno));
+        LOGERR("ERROR binding UDP socket\n");
+        exit(1);
+    }
+  */
+  printf("ack client\n");
+
+    while (1) {
+        sendto(acksock,(void *)&num, sizeof(int) , 0,(struct sockaddr *)&ack_server, sizeof(struct sockaddr));
+        num++;
+	//        printf("%d\n",num);
+        usleep(10000);
+
+      printf("%d\n",num);
+
+    }
+
+
+}
 
 int print_array_count(char arr[batch_size]){
     int i,count = 0;
@@ -34,8 +90,8 @@ int print_array_count(char arr[batch_size]){
         if (arr[i]=='0')
             count++;
 
-    LOGDBG("COUNT: %d\n",count);
-    printf("current batch: %d\n",current_batch);
+    //    printf("COUNT: %d",count);
+    //    printf(",current batch: %d\n",current_batch);
     fflush(stdout);
     
     return count;
@@ -113,36 +169,66 @@ void *tcp_thread(void *args){
 
     print_array_count(nack_pointer);
 
-
+    
     while(1){
 
-        pthread_mutex_lock(&lock);
+      //        pthread_mutex_lock(&lock);
         memcpy(&arr,nack_pointer,batch_size);
-        pthread_mutex_unlock(&lock);
+	//pthread_mutex_unlock(&lock);
         print_array_count(nack_pointer);
 
+        usleep(1000);
 
-        count = 0;
-        for(i =0; i< batch_size; i++){
-            if (arr[i]=='0')
-                count++;
-        }
-
-        if (count < 2000)
-           usleep (2000*1500); 
-        else
-           usleep(count* PACKET_TIME);
-
-        pthread_mutex_lock(&lock);
         memcpy(&arr,nack_pointer,batch_size);
-        pthread_mutex_unlock(&lock);
-
-        LOGDBG("After sending");
         count = 0;
         for(i =0; i< batch_size; i++){
             if (arr[i]=='0')
                 count++;
         }
+
+        if (range[0]==0 && count>1000){
+            n = send(sockfd, (void*)&arr, sizeof(arr), 0);
+            range[0]=1;
+            printf("sending count %d\n",count);
+        } else if (range[1]==0 && count>500 && count <500){
+            n = send(sockfd, (void*)&arr, sizeof(arr), 0);
+            range[1]=1;
+            printf("sending count %d\n",count);
+        } else if (range[2]==0 && count>200 && count < 500) {
+            n = send(sockfd, (void*)&arr, sizeof(arr), 0);
+            range[2]=1;
+            printf("sending count %d\n",count);
+	} else if (range[3] == 0 && count >0 && count < 200) {
+            n = send(sockfd, (void*)&arr, sizeof(arr), 0);
+            range[3]=1;
+            printf("sending count %d\n",count);
+        } else if (range[4] == 0 && count == 0) {
+            n = send(sockfd, (void*)&arr, sizeof(arr), 0);
+            range[2] = 0;
+            range[0] = 0;
+            range[1] = 0;
+            range[3] = 0;
+            range[4] = 0;
+
+            printf("sending count %d\n",count);
+        } else
+   	     usleep(10000);
+
+
+	/*
+        if (!tcp_flag && count>200) {usleep(100000); continue;}
+        if (count == 8192) tcp_flag = 0;
+
+	//	pthread_mutex_lock(&lock);
+        memcpy(&arr,nack_pointer,batch_size);
+	//	pthread_mutex_unlock(&lock);
+
+        count = 0;
+        for(i =0; i< batch_size; i++){
+            if (arr[i]=='0')
+                count++;
+        }
+        printf("count requested %d\n",count);
         print_array_count(arr);
 
         n = send(sockfd, (void*)&arr, sizeof(arr), 0);
@@ -151,10 +237,11 @@ void *tcp_thread(void *args){
             LOGERR("ERROR writing to socket\n");
             exit(1);
         }
-
+*/
         if (0 == count){
 
             current_batch++;
+            tcp_flag = 1;
             if(current_batch == no_of_batches){
                 stop_flag = 1;
                 close(sockfd);
@@ -167,11 +254,9 @@ void *tcp_thread(void *args){
                         arr[i] = '0';
             }
 
-		usleep(10000000);
-
         }
 
-    }
+	}
 
 }
 
@@ -181,6 +266,7 @@ int main(){
     int bytes_read = 0;
 
     struct sockaddr_in server_addr , client_addr;
+    struct sockaddr_in ack_server;
     bytes_read = bytes_read;
 
 
@@ -188,7 +274,12 @@ int main(){
         LOGERR("ERROR creating TCP thread\n");
         exit(1);
     }
-
+    
+    if(pthread_create(&ack_server_thread, NULL, ack_thread, "tcp_client") != 0){
+        LOGERR("ERROR creating TCP thread\n");
+        exit(1);
+    }
+    
     while(!batch_set_flag);
 
     char nack_array[batch_size];
@@ -210,7 +301,6 @@ int main(){
     server_addr.sin_addr.s_addr = INADDR_ANY;
     bzero(&(server_addr.sin_zero),8);
 
-
     if (bind(sock,(struct sockaddr *)&server_addr,sizeof(struct sockaddr)) == -1){
         LOGERR("ERROR binding UDP socket\n");
         exit(1);
@@ -231,12 +321,14 @@ int main(){
 
     //printf("starting to receive\n");
 
+    int count = 0;
     while (1){
 
         bytes_read = recvfrom(sock,recv_data,packet_size+2, 0,(struct sockaddr *)&client_addr, &addr_len);
+
+	//        printf("cr: %d\n",count++);
       
-        //printf("Seq_no received = %d", recv_payload->sequence_no);
-        //fflush(stdout);
+        fflush(stdout);
         memcpy(&sequence_no,recv_data,2);
 
         if (current_batch == no_of_batches - 1) {
@@ -254,16 +346,14 @@ int main(){
 
         if(current_batch%2 == 0){
             if(0 <= sequence_no && sequence_no <= batch_size -1){
-                memcpy(heap_mem+(current_batch*batch_size*packet_size)+(packet_size*sequence_no),recv_data+2,packet_size);
+	        memcpy(heap_mem+(current_batch*batch_size*packet_size)+(packet_size*sequence_no),recv_data+2,packet_size);
                 *(nack_pointer+sequence_no) = '1';
             }
         }
 
         else if(current_batch%2 == 1){
-	  printf("Seq no: %d\n",sequence_no);
             if(batch_size <= sequence_no &&  sequence_no <= 2*batch_size - 1){
-              printf("Here\n");
-	      memcpy(heap_mem+(current_batch*batch_size*packet_size)+(packet_size*(sequence_no - batch_size)),recv_data+2,packet_size);
+	        memcpy(heap_mem+(current_batch*batch_size*packet_size)+(packet_size*(sequence_no - batch_size)),recv_data+2,packet_size);
                 *(nack_pointer+(sequence_no-batch_size)) = '1';   
             }
         }
