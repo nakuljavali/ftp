@@ -37,20 +37,28 @@ char *nack_pointer = NULL;
 
 int latest_count = 0;
 
-void *ack_client (void *args)
-{
-  int ack_sock;
-  struct sockaddr_in ack_client;
-  socklen_t addr_len;
+/// ACK server parameters
 
+int ack_sock;
+struct sockaddr_in ack_server;
+socklen_t addr_len;
+
+
+void *ack_server (void *args)
+{
+
+
+  
+  char recv_data[batch_size+4];
+  char temp_buff[batch_size+4];	
   ack_sock = socket(AF_INET, SOCK_DGRAM, 0);
 
-  ack_client.sin_family = AF_INET;
-  ack_client.sin_port = htons(ACK_PORT);
-  ack_client.sin_addr.s_addr = INADDR_ANY;
+  ack_server.sin_family = AF_INET;
+  ack_server.sin_port = htons(ACK_PORT);
+  ack_server.sin_addr.s_addr = INADDR_ANY;
   bzero(&(server_addr.sin_zero),8);
 
-    if (bind(ack_sock,(struct sockaddr *)&ack_client,sizeof(struct sockaddr)) == -1){
+    if (bind(ack_sock,(struct sockaddr *)&ack_server,sizeof(struct sockaddr)) == -1){
         LOGERR("ERROR binding UDP socket\n");
         exit(1);
     }
@@ -58,13 +66,41 @@ void *ack_client (void *args)
 
 
     printf("Ack Server\n");
+    int received_batch_no;	
+    int i, previous = batch_size;
+    while(1) 
+    {
+      recvfrom(ack_sock,&recv_data,batch_size+4, 0,(struct sockaddr *)&ack_server, &addr_len);
+      
 
-    while(1) {
-      recvfrom(ack_sock,&recv_data,sizeof(int), 0,(struct sockaddr *)&ack_client, &addr_len);
-      //      printf("%d\n",recv_data);
-        printf("%d\n",recv_data);
-        usleep(10000);
+      memcpy(&received_batch_no,recv_data,4);
+      if(received_batch_no < current_batch)
+	continue;
 
+      
+      memcpy(temp_buff,recv_data+4,batch_size);
+
+
+
+      i = print_array_count(temp_buff);
+           printf("ARRAY RECEIVED OF COUNT UDP :%d, previous count = %d\n",i,previous);
+
+           if (i == 0) 
+	   {
+                current_batch++;
+		if(current_batch == no_of_batches-1)
+		{
+			batch_size = last_batch_size;
+			previous = last_batch_size;
+		}	
+                printf("Batch changed; current batch \n",current_batch);
+           }
+	   else if(i < previous)
+	   {
+		previous = i;
+      		memcpy(nack_pointer,recv_data+4,batch_size);
+
+	   }
     }
 
 }
@@ -206,12 +242,12 @@ void *tcp_server()
 
   send(connected,(void*)info,sizeof(struct infoheader), 0);
   LOGDBG("Info Packet Sent");
-  
+  pthread_exit(0) ; 
   start_sending = 1;
 
   LOGDBG("Listening on TCP Port, to receive nack data");
 
-  while(1) {
+  while(0) {
       bytes_recv = recv(connected,recv_data,batch_size,MSG_WAITALL);
       if (bytes_recv > 0) {
 	//           LOGDBG("Bytes RECEIVED %d",bytes_recv);
