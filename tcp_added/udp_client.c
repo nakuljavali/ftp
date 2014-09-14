@@ -43,6 +43,8 @@ int ack_sock;
 struct sockaddr_in ack_server;
 socklen_t addr_len;
 
+// dont change this 
+int unchanged_batch_size = 0;
 
 int print_array_count(char arr[batch_size])
 
@@ -50,11 +52,17 @@ int print_array_count(char arr[batch_size])
 
   int i,count = 0;
   if(current_batch == no_of_batches -1)
-    batch_size = last_batch_size;
-  for(i = 0; i < batch_size; i++)
-    if (arr[i]=='0')
-      count++;
-  fflush(stdout);
+ 	{ for(i = 0; i < last_batch_size; i++)
+    		if (arr[i]=='0')
+      			count++;
+	}
+  else
+	{
+ 	   for(i = 0; i < batch_size; i++)
+    		if (arr[i]=='0')
+      			count++;
+	
+	}
   return count;
 
 }
@@ -96,7 +104,7 @@ void *ack_thread()
 
 
       i = print_array_count(temp_buff);
-      //      printf("ARRAY RECEIVED OF COUNT UDP :%d, previous count = %d, current batch %d, recv batch no %d, total no of batches %d \n",i,previous,current_batch,received_batch_no,no_of_batches);
+      printf("ARRAY RECEIVED OF COUNT UDP :%d, previous count = %d, current batch %d, recv batch no %d, total no of batches %d \n",i,previous,current_batch,received_batch_no,no_of_batches);
 
       if (i == 0) 
 	{
@@ -136,6 +144,7 @@ void send_udp(void* mydata)
 
 int send_by_seq_no(int seq_no)
 {
+/*
   if(current_batch%2 ==0)
     {if ( (current_batch == no_of_batches-1) && (seq_no == last_batch_size-1) ){
 
@@ -149,18 +158,18 @@ int send_by_seq_no(int seq_no)
       if ( (current_batch == no_of_batches-1) && (seq_no-batch_size == last_batch_size-1) ){
 	packet_size=last_packet_size;
       }}
-
+*/
   char* myudp = (char *) malloc(packet_size+2);
    
   memcpy(myudp,&seq_no,2);
 
   if(current_batch%2 == 0){
 
-    memcpy(myudp+2,mmaped_file+(current_batch*batch_size*packet_size)+(seq_no*packet_size),packet_size);
+    memcpy(myudp+2,mmaped_file+(current_batch*unchanged_batch_size*packet_size)+(seq_no*packet_size),packet_size);
 
   }
   else if(current_batch%2 == 1) {
-    memcpy(myudp+2,mmaped_file+(current_batch*batch_size*packet_size)+((seq_no-batch_size)*packet_size),packet_size);
+    memcpy(myudp+2,mmaped_file+(current_batch*unchanged_batch_size*packet_size)+((seq_no-unchanged_batch_size)*packet_size),packet_size);
 
   }
   bytes_sent = sendto(sock,(void *)myudp, (packet_size+2) , 0,(struct sockaddr *)&server_addr, sizeof(struct sockaddr));
@@ -301,8 +310,9 @@ int main(int argc, char *argv[])
     pthread_t tcp_thread,ack_server_thread;
     int element,ar_set;
 
-    fill_parameters(argv[1],1452,8192);
-
+    fill_parameters(argv[1],1024,4000);
+	 
+    unchanged_batch_size = batch_size;
     char nack_array[batch_size];
 
     nack_pointer = nack_array;
@@ -349,10 +359,8 @@ int main(int argc, char *argv[])
           if (*(nack_pointer+element)=='0') {
                 if (current_batch%2 == 0)
                   send_by_seq_no(element);
-
                 else
-
-                  send_by_seq_no(element+batch_size);
+                  send_by_seq_no(element+unchanged_batch_size);
           }
         }
      }
@@ -362,10 +370,8 @@ int main(int argc, char *argv[])
           if (*(nack_pointer+element)=='0') {
                 if (current_batch%2 == 0)
                   send_by_seq_no(element);
-
                 else
-
-                  send_by_seq_no(element+batch_size);
+                  send_by_seq_no(element+unchanged_batch_size);
           }
         }
      }

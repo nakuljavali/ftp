@@ -40,23 +40,27 @@ struct hostent *host;
 struct sockaddr_in ack_server;
 
 char* client_ip = NULL;
+// dont change this batch size 
+int unchanged_batch_size = 0;
 
-int print_array_count(char arr[batch_size]){
+int print_array_count(char arr[batch_size])
+{
+
   int i,count = 0;
-
   if(current_batch == no_of_batches -1)
-    batch_size = last_batch_size;
-  for(i = 0; i < batch_size; i++)
-    if (arr[i]=='0')
-      count++;
-
-  //  printf("COUNT: %d",count);
-  //  printf(",current batch: %d\n",current_batch);
-  fflush(stdout);
+        { for(i = 0; i < last_batch_size; i++)
+                if (arr[i]=='0')
+                        count++;
+        }
+  else  
+        {
+           for(i = 0; i < batch_size; i++)
+                if (arr[i]=='0')
+                        count++;
+        }
 
   return count;
 }
-
 
 void send_array_with_batch()
 {
@@ -67,10 +71,10 @@ void send_array_with_batch()
   memcpy(arrbat,&current_batch,4);
   memcpy(arrbat+4, nack_pointer, batch_size);
     
-  usleep(10000);
   bytes_sent = sendto(acksock,(void *)arrbat, (batch_size+4) , 0,(struct sockaddr *)&ack_server, sizeof(struct sockaddr));
-    
+	
   bytes_sent = bytes_sent;
+  usleep(10000);    
   free(arrbat);
 }
 
@@ -98,9 +102,9 @@ void *tcp_thread(void *args){
   bcopy((char *)server->h_addr, (char *)&serv_addr.sin_addr.s_addr, server->h_length);
   serv_addr.sin_port = htons(TCP_PORT);
 
-  if (connect(sockfd,(struct sockaddr *) &serv_addr,sizeof(serv_addr)) < 0) {
-    LOGERR("ERROR connecting to TCP server\n");
-    exit(1);
+  while(connect(sockfd,(struct sockaddr *) &serv_addr,sizeof(serv_addr)) < 0) {
+    LOGERR("ERROR connecting to TCP server........Trying again\n");
+    //exit(1);
   }
 
   printf("TCP client connected\n");
@@ -173,7 +177,6 @@ void *ack_thread(void *args){
 
       //      printf("Current Batch %d\n",current_batch);
     }
-
     else
       send_array_with_batch();
 
@@ -222,7 +225,8 @@ int main(int argc, char *argv[]){
 
   while(!batch_set_flag);
 
-  heap_mem = (char *)malloc((filesize));
+  unchanged_batch_size = batch_size;
+  heap_mem = (char *)malloc((no_of_packets * packet_size));
 
 
   char nack_array[batch_size];
@@ -264,10 +268,10 @@ int main(int argc, char *argv[]){
     bytes_read = recvfrom(sock,recv_data,packet_size+2, 0,(struct sockaddr *)&client_addr, &addr_len);
 
     memcpy(&sequence_no,recv_data,2);
-    //    printf("SERVER : received seq no : %d, current batch: %d, total batches: %d\n",sequence_no,current_batch,no_of_batches);
-    if (current_batch == no_of_batches - 1) {
+    printf("SERVER : received seq no : %d, current batch: %d, total batches: %d\n",sequence_no,current_batch,no_of_batches);
+/*    if (current_batch == no_of_batches - 1) 
+    {
       // batch_size = last_batch_size;
-
       if(current_batch%2 == 0){
 	if(sequence_no == last_batch_size - 1)
 	  packet_size = last_packet_size;
@@ -279,28 +283,49 @@ int main(int argc, char *argv[]){
 	//	printf("the last packet\n");
       }
     }
+    else*/
 
-
-    if(current_batch%2 == 0){
-      if(0 <= sequence_no && sequence_no <= batch_size -1){
-	memcpy(heap_mem+(current_batch*batch_size*packet_size)+(packet_size*sequence_no),recv_data+2,packet_size);
+    
+if (current_batch != no_of_batches - 1) 
+{
+    if(current_batch%2 == 0)
+    {
+      if(0 <= sequence_no && sequence_no <= unchanged_batch_size -1)
+      {
+	memcpy(heap_mem+(current_batch*unchanged_batch_size*packet_size)+(packet_size*sequence_no),recv_data+2,packet_size);
 	*(nack_pointer+sequence_no) = '1';
+      }
+    }
+    else if(current_batch%2 == 1)
+    {
+      if(unchanged_batch_size <= sequence_no &&  sequence_no <= 2*unchanged_batch_size - 1)
+      {
+	memcpy(heap_mem+(current_batch*unchanged_batch_size*packet_size)+(packet_size*(sequence_no - unchanged_batch_size)),recv_data+2,packet_size);
+	*(nack_pointer+(sequence_no-unchanged_batch_size)) = '1';
 
       }
     }
-
-    else if(current_batch%2 == 1){
-
-      if(batch_size <= sequence_no &&  sequence_no <= 2*batch_size - 1){
-	memcpy(heap_mem+(current_batch*batch_size*packet_size)+(packet_size*(sequence_no - batch_size)),recv_data+2,packet_size);
-	*(nack_pointer+(sequence_no-batch_size)) = '1';
-
+}
+else
+{
+  if(current_batch%2 == 0)
+    {
+      if(0 <= sequence_no && sequence_no <= last_batch_size -1)
+      {
+        memcpy(heap_mem+(current_batch*unchanged_batch_size*packet_size)+(packet_size*sequence_no),recv_data+2,packet_size);
+        *(nack_pointer+sequence_no) = '1';
+      }
+    }
+    else if(current_batch%2 == 1)
+    {
+      if(unchanged_batch_size <= sequence_no &&  sequence_no <= (unchanged_batch_size +last_batch_size - 1))
+      {
+        memcpy(heap_mem+(current_batch*unchanged_batch_size*packet_size)+(packet_size*(sequence_no - unchanged_batch_size)),recv_data+2,packet_size);
+        *(nack_pointer+(sequence_no-unchanged_batch_size)) = '1';
       }
     }
 
-
-
-
+}
   }
   return 0;
 }
