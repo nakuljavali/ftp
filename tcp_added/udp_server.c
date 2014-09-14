@@ -23,6 +23,8 @@
 
 pthread_t tcp_thread_t;
 pthread_t ack_thread_t;
+pthread_t write_thread_t;
+
 int stop_flag = 0;
 int current_batch = 0;
 char *nack_pointer = NULL;
@@ -183,23 +185,55 @@ void *ack_thread(void *args){
     if(current_batch == no_of_batches)
       {
 
-
+        pthread_exit(0);
 
 	//	printf("STOP FLAG IS 1!!!!!!!!\n");
-	FILE *fp = fopen("/tmp/output.bin","w");
+	/*	FILE *fp = fopen("/tmp/output.bin","w");
 	assert(fp != NULL);
 	assert(heap_mem!= NULL);
 	printf("Writing to file\n");
 	fwrite(heap_mem,1,filesize,fp);
 	fclose(fp);
-	exit(0);
+	exit(0); */
       }
 
   }
 
+}
 
+
+void *write_thread(void *args) 
+{
+  FILE *fp_batch = fopen("/tmp/batch.bin","w");
+  assert(fp_batch != NULL);
+  assert(heap_mem != NULL);
+
+  int written_batch = 0;
+  int writing_size = batch_size*packet_size;
+
+  while (1) {
+
+    if (current_batch == written_batch+1) {
+
+      printf("Writing batch %d\n",written_batch);
+
+        if(current_batch == no_of_batches) {
+           writing_size = last_batch_size*packet_size - (packet_size - last_packet_size);
+           fwrite(heap_mem+written_batch*batch_size*packet_size,1,writing_size,fp_batch);
+           fclose(fp_batch);
+           exit(1);
+          }
+
+        fwrite(heap_mem+written_batch*batch_size*packet_size,1,writing_size,fp_batch);
+
+        written_batch++;
+
+      }
+  }
+  return 0;
 
 }
+
 
 int main(int argc, char *argv[]){
   int sock;
@@ -265,6 +299,11 @@ int main(int argc, char *argv[]){
   }
 
   if(pthread_create(&ack_thread_t, NULL, ack_thread, "ack_thread") != 0){
+    LOGERR("ERROR creating ACK thread\n");
+    exit(1);
+  }
+
+  if(pthread_create(&write_thread_t, NULL, write_thread, "write_thread") != 0){
     LOGERR("ERROR creating ACK thread\n");
     exit(1);
   }
