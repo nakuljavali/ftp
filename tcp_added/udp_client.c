@@ -48,12 +48,14 @@ int print_array_count(char arr[batch_size])
 
 {
 
-    int i,count = 0;
-
-    for (i = 0; i < batch_size; i++)
-        if (arr[i]=='0') count++;
-    fflush(stdout);
-    return count;
+  int i,count = 0;
+  if(current_batch == no_of_batches -1)
+    batch_size = last_batch_size;
+  for(i = 0; i < batch_size; i++)
+    if (arr[i]=='0')
+      count++;
+  fflush(stdout);
+  return count;
 
 }
 
@@ -61,7 +63,7 @@ int print_array_count(char arr[batch_size])
 void *ack_thread()
 {  
   char recv_data[batch_size+4];
-  char temp_buff[batch_size+4];	
+  char temp_buff[batch_size+4]; 
   ack_sock = socket(AF_INET, SOCK_DGRAM, 0);
 
   ack_server.sin_family = AF_INET;
@@ -69,17 +71,17 @@ void *ack_thread()
   ack_server.sin_addr.s_addr = INADDR_ANY;
   bzero(&(server_addr.sin_zero),8);
 
-    if (bind(ack_sock,(struct sockaddr *)&ack_server,sizeof(struct sockaddr)) == -1){
-        LOGERR("ERROR binding UDP socket\n");
-        exit(1);
-    }
-    addr_len = sizeof(struct sockaddr);
+  if (bind(ack_sock,(struct sockaddr *)&ack_server,sizeof(struct sockaddr)) == -1){
+    LOGERR("ERROR binding UDP socket\n");
+    exit(1);
+  }
+  addr_len = sizeof(struct sockaddr);
 
 
-    printf("Ack Server\n");
-    int received_batch_no;	
-    int i, previous = batch_size;
-    while(1) 
+  printf("Ack Server\n");
+  int received_batch_no;  
+  int i, previous = batch_size;
+  while(1) 
     {
       recvfrom(ack_sock,&recv_data,batch_size+4, 0,(struct sockaddr *)&ack_server, &addr_len);
       
@@ -94,33 +96,33 @@ void *ack_thread()
 
 
       i = print_array_count(temp_buff);
-      printf("ARRAY RECEIVED OF COUNT UDP :%d, previous count = %d, current batch %d, recv batch no %d, total no of batches %d \n",i,previous,current_batch,received_batch_no,no_of_batches);
+      //      printf("ARRAY RECEIVED OF COUNT UDP :%d, previous count = %d, current batch %d, recv batch no %d, total no of batches %d \n",i,previous,current_batch,received_batch_no,no_of_batches);
 
-           if (i == 0) 
-	   {
-                current_batch++;
+      if (i == 0) 
+	{
+	  current_batch++;
                 
-                if(current_batch == no_of_batches)
-	        {
-		  printf("transmission from client side done. Exiting now....\n");
-                  exit(1);
-                }
+	  if(current_batch == no_of_batches)
+	    {
+	      printf("transmission from client side done. Exiting now....\n");
+	      exit(1);
+	    }
 
-		if(current_batch == no_of_batches-1)
-		{
-			batch_size = last_batch_size;
-			previous = last_batch_size;
-		}	
-                printf("Batch changed; current batch %d \n",current_batch);
+	  if(current_batch == no_of_batches-1)
+	    {
+	      batch_size = last_batch_size;
+	      previous = last_batch_size;
+	    } 
+	  //	  printf("Batch changed; current batch %d \n",current_batch);
                  
-                previous = batch_size;
-           }
-	   else if(i < previous)
-	   {
-		previous = i;
-      		memcpy(nack_pointer,recv_data+4,batch_size);
+	  previous = batch_size;
+	}
+      else if(i < previous)
+	{
+	  previous = i;
+          memcpy(nack_pointer,recv_data+4,batch_size);
 
-	   }
+	}
     }
 
 }
@@ -128,66 +130,69 @@ void *ack_thread()
 
 void send_udp(void* mydata)
 {
-    bytes_sent = sendto(sock,(void *)mydata, (packet_size+2) , 0,(struct sockaddr *)&server_addr, sizeof(struct sockaddr));
+  bytes_sent = sendto(sock,(void *)mydata, (packet_size+2) , 0,(struct sockaddr *)&server_addr, sizeof(struct sockaddr));
 }
 
 
 int send_by_seq_no(int seq_no)
 {
-    int i=0;
-    if(current_batch%2 ==0)
-      {if ( (current_batch == no_of_batches-1) && (seq_no == last_batch_size-1) ){
-	  printf("Sendinf last packet\n");	  
-              packet_size=last_packet_size;
+  if(current_batch%2 ==0)
+    {if ( (current_batch == no_of_batches-1) && (seq_no == last_batch_size-1) ){
+
+	packet_size=last_packet_size;
 
       }
-}
-    else 
-      {if ( (current_batch == no_of_batches-1) && (seq_no-batch_size == last_batch_size-1) ){
-	  printf("last packet: \n");
-	  packet_size=last_packet_size; }}
-    char* myudp = (char *) malloc(packet_size+2);
-   
-    memcpy(myudp,&seq_no,2);
-
-    if(current_batch%2 == 0){
-      memcpy(myudp+2,mmaped_file+(current_batch*batch_size*packet_size)+(seq_no*packet_size),packet_size);
-      fwrite(myudp,1,packet_size+2,stdout);
-}
-    else if(current_batch%2 == 1) {
-      memcpy(myudp+2,mmaped_file+(current_batch*batch_size*packet_size)+((seq_no-batch_size)*packet_size),packet_size);
-      fwrite(myudp,1,packet_size+2,stdout);
     }
-      bytes_sent = sendto(sock,(void *)myudp, (packet_size+2) , 0,(struct sockaddr *)&server_addr, sizeof(struct sockaddr));
+  else if(current_batch%2 == 1)
+    {
+
+      if ( (current_batch == no_of_batches-1) && (seq_no-batch_size == last_batch_size-1) ){
+	packet_size=last_packet_size;
+      }}
+
+  char* myudp = (char *) malloc(packet_size+2);
+   
+  memcpy(myudp,&seq_no,2);
+
+  if(current_batch%2 == 0){
+
+    memcpy(myudp+2,mmaped_file+(current_batch*batch_size*packet_size)+(seq_no*packet_size),packet_size);
+
+  }
+  else if(current_batch%2 == 1) {
+    memcpy(myudp+2,mmaped_file+(current_batch*batch_size*packet_size)+((seq_no-batch_size)*packet_size),packet_size);
+
+  }
+  bytes_sent = sendto(sock,(void *)myudp, (packet_size+2) , 0,(struct sockaddr *)&server_addr, sizeof(struct sockaddr));
        
-   //    send_udp((void*)myudp);
-    free(myudp); 
-    return 0; 
+
+  free(myudp); 
+  return 0; 
 }
 
 const char *read_file_to_heap(char *file_name)
 {
-    const char *memblock;
-    int fd;
-    struct stat sb;
+  const char *memblock;
+  int fd;
+  struct stat sb;
 
-    fd = open(file_name, O_RDONLY);
-    if (fd == -1) {
-        LOGERR("Client/Fopen/file error");
-        exit(1);
-    }
+  fd = open(file_name, O_RDONLY);
+  if (fd == -1) {
+    LOGERR("Client/Fopen/file error");
+    exit(1);
+  }
 
-    fstat(fd, &sb);
-    LOGDBG("Size: %lu\n", (uint64_t)sb.st_size);
-    memblock = mmap(NULL, sb.st_size, PROT_WRITE, MAP_PRIVATE, fd, 0);
+  fstat(fd, &sb);
+  LOGDBG("Size: %lu\n", (uint64_t)sb.st_size);
+  memblock = mmap(NULL, sb.st_size, PROT_WRITE, MAP_PRIVATE, fd, 0);
  
-    if (memblock == MAP_FAILED) {
-        LOGERR("Client/Mmap");
-    }
-    LOGDBG("Mmap SUCCESSFULL.........");
-    close(fd);
+  if (memblock == MAP_FAILED) {
+    LOGERR("Client/Mmap");
+  }
+  LOGDBG("Mmap SUCCESSFULL.........");
+  close(fd);
 
-    return memblock;
+  return memblock;
 }
 
 void *tcp_server()
@@ -202,18 +207,18 @@ void *tcp_server()
   struct infoheader *info;
 
   for(i = 0; i < batch_size; i++)
-     recv_data[i] = '0';
+    recv_data[i] = '0';
 
   if ((sock = socket(AF_INET, SOCK_STREAM, 0)) == -1) {
-      perror("Socket");
-      LOGERR("Client/TCP/Socket/Create");
-      exit(1);
+    perror("Socket");
+    LOGERR("Client/TCP/Socket/Create");
+    exit(1);
   }
 
   if (setsockopt(sock,SOL_SOCKET,SO_REUSEADDR,&true,sizeof(int)) == -1) {
-      perror("Setsockopt");
-      LOGERR("Client/TCP/Socket/Reuseaddr");
-      exit(1);
+    perror("Setsockopt");
+    LOGERR("Client/TCP/Socket/Reuseaddr");
+    exit(1);
   }
 
   server_addr.sin_family = AF_INET;
@@ -223,21 +228,21 @@ void *tcp_server()
   sin_size = sizeof(struct sockaddr_in);
 
   if (bind(sock, (struct sockaddr *)&server_addr, sizeof(struct sockaddr)) == -1) {
-      perror("Unable to bind");
-      LOGERR("Client/TCP/Socket/Bind\n");
-      exit(1);
+    perror("Unable to bind");
+    LOGERR("Client/TCP/Socket/Bind\n");
+    exit(1);
   }
 
   if (listen(sock, 2) == -1) {
-      perror("Listen");
-      LOGERR("Client/TCP/Socket/Listen\n");
-      exit(1);
+    perror("Listen");
+    LOGERR("Client/TCP/Socket/Listen\n");
+    exit(1);
   }
 
   if ( (connected = accept(sock, (struct sockaddr *)&client_addr,&sin_size))==-1) {
-      perror("Listen");
-      LOGERR("Client/TCP/Socket/Connected\n");
-      exit(1);
+    perror("Listen");
+    LOGERR("Client/TCP/Socket/Connected\n");
+    exit(1);
   }
 
   LOGDBG("I got a connection from (%s , %d)",
@@ -262,7 +267,7 @@ void *tcp_server()
   while(0) {
       bytes_recv = recv(connected,recv_data,batch_size,MSG_WAITALL);
       if (bytes_recv > 0) {
-	//           LOGDBG("Bytes RECEIVED %d",bytes_recv);
+  //           LOGDBG("Bytes RECEIVED %d",bytes_recv);
            memcpy(nack_pointer,recv_data,batch_size);
 
            int i;
@@ -276,7 +281,7 @@ void *tcp_server()
            }
            latest_count = i;
 
-	   //           printf("Current batch %d\n",current_batch);
+     //           printf("Current batch %d\n",current_batch);
 
 
            if (current_batch == no_of_batches) {
@@ -296,13 +301,13 @@ int main(int argc, char *argv[])
     pthread_t tcp_thread,ack_server_thread;
     int element,ar_set;
 
-    fill_parameters(argv[1],1452,2);
+    fill_parameters(argv[1],1452,8192);
 
     char nack_array[batch_size];
 
     nack_pointer = nack_array;
 
-    host= (struct hostent *) gethostbyname((char *)SERVER_IP);
+    host= (struct hostent *) gethostbyname((char *)argv[2]);
 
     for (ar_set = 0; ar_set < batch_size; ar_set++)
         nack_array[ar_set] = '0';
@@ -310,9 +315,9 @@ int main(int argc, char *argv[])
     printf("%s\n",argv[1]);
 
     if ((sock = socket(AF_INET, SOCK_DGRAM, 0)) == -1) {
-	perror("Socket");
+  perror("Socket");
         LOGERR("Client/UDP/Socket\n");
-	exit(1);
+  exit(1);
     }
 
     server_addr.sin_family = AF_INET;
@@ -338,37 +343,35 @@ int main(int argc, char *argv[])
 
     LOGDBG("Sending .....\n");
 
-
-    int count = 0;
-    
     while(1) {
-        if (current_batch == no_of_batches -1) batch_size = last_batch_size;
-        for (element = 0; element < batch_size; element++) {
-	              if (reset_flag == 1) {
-	      element = 0;
-              reset_flag = 0;
-              printf("resetting flag\n");
-              printf("new batch: %d\n",current_batch);
-	      }
-	    //         	LOGDBG("Current Batch %d, Current Seq %d",current_batch,element);
-  	    if (*(nack_pointer+element)=='0') {
+     if (current_batch == no_of_batches -1){
+        for (element = 0; element < last_batch_size; element++) {
+          if (*(nack_pointer+element)=='0') {
                 if (current_batch%2 == 0)
-		  {	//printf("current batch %d ,Sent seq no %d\n",current_batch,element);
-			send_by_seq_no(element);
-		    }
-                else
-                    {
-			send_by_seq_no(element+batch_size);
-                    	//printf("current batch %d, Sent seq no %d\n",current_batch,element+batch_size);
-		   }
+                  send_by_seq_no(element);
 
-		//		usleep(10);
-           }
+                else
+
+                  send_by_seq_no(element+batch_size);
+          }
         }
+     }
+
+     else{
+        for (element = 0; element < batch_size; element++) {
+          if (*(nack_pointer+element)=='0') {
+                if (current_batch%2 == 0)
+                  send_by_seq_no(element);
+
+                else
+
+                  send_by_seq_no(element+batch_size);
+          }
+        }
+     }
     }
 
     LOGDBG("Sending Complete\n");
     return 0;
 }
-
 
