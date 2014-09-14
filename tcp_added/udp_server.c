@@ -29,6 +29,7 @@ char *nack_pointer = NULL;
 int batch_set_flag = 0;
 int create_array_flag =0;
 
+char *heap_mem=NULL;
 
 //ACK thread parameters
 int acksock, true;
@@ -165,13 +166,27 @@ void *ack_thread(void *args){
             }
             current_batch++;
             memset(nack_pointer, '0', batch_size);
+
+	    printf("Current Batch %d\n",current_batch);
         }
 
         else
             send_array_with_batch();
 
         if(current_batch == no_of_batches)
-            pthread_exit(0);
+	{
+
+
+
+    	    printf("STOP FLAG IS 1!!!!!!!!\n");
+            FILE *fp = fopen("/mnt/output_nodeb.bin","w");
+            assert(fp != NULL);
+            assert(heap_mem!= NULL);
+            printf("Writing to file\n");
+            fwrite(heap_mem,1,filesize,fp);
+            fclose(fp);
+            exit(0);
+	}
 
     }
 
@@ -200,6 +215,8 @@ int main(){
 
 
     while(!batch_set_flag);
+
+    heap_mem = (char *)malloc((filesize));
 
 
     char nack_array[batch_size];
@@ -230,9 +247,6 @@ int main(){
     printf("UDP Server Waiting for client\n");
         fflush(stdout);
 
-    FILE *fp = fopen("/mnt/output_nodeb.bin","w");
-    assert(fp != NULL);
-    char *heap_mem = (char *)malloc((filesize));
 
 
     char recv_data[packet_size+2];
@@ -240,20 +254,23 @@ int main(){
 
     while (1){
 
+
         bytes_read = recvfrom(sock,recv_data,packet_size+2, 0,(struct sockaddr *)&client_addr, &addr_len);
 
         memcpy(&sequence_no,recv_data,2);
-	printf("SERVER : received seq no : %d\n",sequence_no);
+	printf("SERVER : received seq no : %d, current batch: %d, total batches: %d\n",sequence_no,current_batch,no_of_batches);
         if (current_batch == no_of_batches - 1) {
             batch_size = last_batch_size;
 
         if(current_batch%2 == 0){
           if(sequence_no == last_batch_size - 1)
                 packet_size = last_packet_size;
+	  printf("The LAst Packtet\n");
         }
         else if(current_batch%2 ==1){
           if((sequence_no-batch_size) == last_batch_size - 1)
                 packet_size = last_packet_size;
+	  printf("the last packet\n");
            }
         }
 
@@ -276,12 +293,6 @@ int main(){
         }
 
 
-        if(stop_flag){
-            printf("Writing to file\n");
-            fwrite(heap_mem,1,filesize,fp);
-            fclose(fp);
-            exit(0);
-        }
 
 
     }

@@ -94,17 +94,26 @@ void *ack_thread()
 
 
       i = print_array_count(temp_buff);
-           printf("ARRAY RECEIVED OF COUNT UDP :%d, previous count = %d\n",i,previous);
+      printf("ARRAY RECEIVED OF COUNT UDP :%d, previous count = %d, current batch %d, recv batch no %d, total no of batches %d \n",i,previous,current_batch,received_batch_no,no_of_batches);
 
            if (i == 0) 
 	   {
                 current_batch++;
+                
+                if(current_batch == no_of_batches)
+	        {
+		  printf("transmission from client side done. Exiting now....\n");
+                  exit(1);
+                }
+
 		if(current_batch == no_of_batches-1)
 		{
 			batch_size = last_batch_size;
 			previous = last_batch_size;
 		}	
                 printf("Batch changed; current batch %d \n",current_batch);
+                 
+                previous = batch_size;
            }
 	   else if(i < previous)
 	   {
@@ -127,26 +136,29 @@ int send_by_seq_no(int seq_no)
 {
     int i=0;
     if(current_batch%2 ==0)
-      {if ( (current_batch == no_of_batches-1) && (seq_no == last_batch_size-1) ) packet_size=last_packet_size;}
+      {if ( (current_batch == no_of_batches-1) && (seq_no == last_batch_size-1) ){
+	  printf("Sendinf last packet\n");	  
+              packet_size=last_packet_size;
+
+      }
+}
     else 
-      {if ( (current_batch == no_of_batches-1) && (seq_no-batch_size == last_batch_size-1) ) packet_size=last_packet_size; }
+      {if ( (current_batch == no_of_batches-1) && (seq_no-batch_size == last_batch_size-1) ){
+	  printf("last packet: \n");
+	  packet_size=last_packet_size; }}
     char* myudp = (char *) malloc(packet_size+2);
    
     memcpy(myudp,&seq_no,2);
 
-    if(current_batch%2 == 0)
+    if(current_batch%2 == 0){
       memcpy(myudp+2,mmaped_file+(current_batch*batch_size*packet_size)+(seq_no*packet_size),packet_size);
-    else if(current_batch%2 == 1)
+      fwrite(myudp,1,packet_size+2,stdout);
+}
+    else if(current_batch%2 == 1) {
       memcpy(myudp+2,mmaped_file+(current_batch*batch_size*packet_size)+((seq_no-batch_size)*packet_size),packet_size);
-
-
-    if (latest_count < 400)
-      for (i = 0; i < 5;i++) {
-        bytes_sent = sendto(sock,(void *)myudp, (packet_size+2) , 0,(struct sockaddr *)&server_addr, sizeof(struct sockaddr));
-        usleep(100);
-      }
-    else
-        bytes_sent = sendto(sock,(void *)myudp, (packet_size+2) , 0,(struct sockaddr *)&server_addr, sizeof(struct sockaddr));
+      fwrite(myudp,1,packet_size+2,stdout);
+    }
+      bytes_sent = sendto(sock,(void *)myudp, (packet_size+2) , 0,(struct sockaddr *)&server_addr, sizeof(struct sockaddr));
        
    //    send_udp((void*)myudp);
     free(myudp); 
@@ -264,7 +276,7 @@ void *tcp_server()
            }
            latest_count = i;
 
-           printf("Current batch %d\n",current_batch);
+	   //           printf("Current batch %d\n",current_batch);
 
 
            if (current_batch == no_of_batches) {
@@ -284,7 +296,7 @@ int main(int argc, char *argv[])
     pthread_t tcp_thread,ack_server_thread;
     int element,ar_set;
 
-    fill_parameters(argv[1],1452,8192);
+    fill_parameters(argv[1],1452,2);
 
     char nack_array[batch_size];
 
@@ -341,13 +353,13 @@ int main(int argc, char *argv[])
 	    //         	LOGDBG("Current Batch %d, Current Seq %d",current_batch,element);
   	    if (*(nack_pointer+element)=='0') {
                 if (current_batch%2 == 0)
-                    {	printf("current batch %d ,Sent seq no %d\n",current_batch,element);
+		  {	//printf("current batch %d ,Sent seq no %d\n",current_batch,element);
 			send_by_seq_no(element);
 		    }
                 else
                     {
 			send_by_seq_no(element+batch_size);
-                    	printf("current batch %d, Sent seq no %d\n",current_batch,element+batch_size);
+                    	//printf("current batch %d, Sent seq no %d\n",current_batch,element+batch_size);
 		   }
 
 		//		usleep(10);
