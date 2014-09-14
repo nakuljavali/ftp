@@ -104,7 +104,7 @@ void *ack_thread()
 
 
       i = print_array_count(temp_buff);
-      printf("ARRAY RECEIVED OF COUNT UDP :%d, previous count = %d, current batch %d, recv batch no %d, total no of batches %d \n",i,previous,current_batch,received_batch_no,no_of_batches);
+      printf("COUNT :%d, previous count = %d, current batch %d, recv batch no %d, total_batches %d \n",i,previous,current_batch,received_batch_no,no_of_batches);
 
       if (i == 0) 
 	{
@@ -194,6 +194,8 @@ const char *read_file_to_heap(char *file_name)
   fstat(fd, &sb);
   LOGDBG("Size: %lu\n", (uint64_t)sb.st_size);
   memblock = mmap(NULL, sb.st_size, PROT_WRITE, MAP_PRIVATE, fd, 0);
+ // memblock = mmap(NULL, no_of_packets*packet_size, PROT_WRITE, MAP_PRIVATE, fd, 0);
+  
  
   if (memblock == MAP_FAILED) {
     LOGERR("Client/Mmap");
@@ -310,7 +312,7 @@ int main(int argc, char *argv[])
     pthread_t tcp_thread,ack_server_thread;
     int element,ar_set;
 
-    fill_parameters(argv[1],1024,4000);
+    fill_parameters(argv[1],1024,8192);
 	 
     unchanged_batch_size = batch_size;
     char nack_array[batch_size];

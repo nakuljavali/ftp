@@ -169,7 +169,7 @@ void *ack_thread(void *args){
     count =  print_array_count(nack_pointer);
 
     if(0 == count){
-      for(i = 0; i < 50; i++){
+      for(i = 0; i < 100; i++){
 	send_array_with_batch();
       }
       current_batch++;
@@ -269,28 +269,13 @@ int main(int argc, char *argv[]){
 
     memcpy(&sequence_no,recv_data,2);
     printf("SERVER : received seq no : %d, current batch: %d, total batches: %d\n",sequence_no,current_batch,no_of_batches);
-/*    if (current_batch == no_of_batches - 1) 
-    {
-      // batch_size = last_batch_size;
-      if(current_batch%2 == 0){
-	if(sequence_no == last_batch_size - 1)
-	  packet_size = last_packet_size;
-	//	printf("The LAst Packtet\n");
-      }
-      else if(current_batch%2 ==1){
-	if((sequence_no-batch_size) == last_batch_size - 1)
-	  packet_size = last_packet_size;
-	//	printf("the last packet\n");
-      }
-    }
-    else*/
 
     
 if (current_batch != no_of_batches - 1) 
 {
     if(current_batch%2 == 0)
     {
-      if(0 <= sequence_no && sequence_no <= unchanged_batch_size -1)
+      if((0 <= sequence_no && sequence_no <= unchanged_batch_size -1) &&  (*(nack_pointer+sequence_no) != '1'))
       {
 	memcpy(heap_mem+(current_batch*unchanged_batch_size*packet_size)+(packet_size*sequence_no),recv_data+2,packet_size);
 	*(nack_pointer+sequence_no) = '1';
@@ -298,7 +283,7 @@ if (current_batch != no_of_batches - 1)
     }
     else if(current_batch%2 == 1)
     {
-      if(unchanged_batch_size <= sequence_no &&  sequence_no <= 2*unchanged_batch_size - 1)
+      if((unchanged_batch_size <= sequence_no &&  sequence_no <= 2*unchanged_batch_size - 1) && (*(nack_pointer+(sequence_no-unchanged_batch_size)) != '1') )
       {
 	memcpy(heap_mem+(current_batch*unchanged_batch_size*packet_size)+(packet_size*(sequence_no - unchanged_batch_size)),recv_data+2,packet_size);
 	*(nack_pointer+(sequence_no-unchanged_batch_size)) = '1';
@@ -310,7 +295,7 @@ else
 {
   if(current_batch%2 == 0)
     {
-      if(0 <= sequence_no && sequence_no <= last_batch_size -1)
+      if((0 <= sequence_no && sequence_no <= last_batch_size -1) &&  (*(nack_pointer+sequence_no) != '1'))
       {
         memcpy(heap_mem+(current_batch*unchanged_batch_size*packet_size)+(packet_size*sequence_no),recv_data+2,packet_size);
         *(nack_pointer+sequence_no) = '1';
@@ -318,7 +303,7 @@ else
     }
     else if(current_batch%2 == 1)
     {
-      if(unchanged_batch_size <= sequence_no &&  sequence_no <= (unchanged_batch_size +last_batch_size - 1))
+      if(unchanged_batch_size <= sequence_no &&  sequence_no <= (unchanged_batch_size +last_batch_size - 1)&&(*(nack_pointer+(sequence_no-unchanged_batch_size)) != '1'))
       {
         memcpy(heap_mem+(current_batch*unchanged_batch_size*packet_size)+(packet_size*(sequence_no - unchanged_batch_size)),recv_data+2,packet_size);
         *(nack_pointer+(sequence_no-unchanged_batch_size)) = '1';
