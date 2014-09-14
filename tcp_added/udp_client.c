@@ -141,6 +141,32 @@ void send_udp(void* mydata)
   bytes_sent = sendto(sock,(void *)mydata, (packet_size+2) , 0,(struct sockaddr *)&server_addr, sizeof(struct sockaddr));
 }
 
+void send_info_packet()
+{
+  struct infoheader *info;
+  int send_count = 0;
+
+  info = malloc(sizeof(struct infoheader));
+
+  info->sync1 = 65536;
+  info->sync2 = 65536;
+  info->size_pkt = packet_size;
+  info->size_file = filesize;
+  info->size_batch = batch_size;
+  info->no_batches = no_of_batches;
+  info->no_packets = no_of_packets;
+  info->size_last_batch = last_batch_size;
+  info->size_last_packet = last_packet_size;
+
+  LOGDBG("send_info_packet");
+
+  for (send_count = 0; send_count < 200 ; send_count++) {
+    LOGDBG("sending info packet");
+    if ( sendto(sock,(void*)info,sizeof(struct infoheader),0,(struct sockaddr *)&server_addr,sizeof(struct sockaddr)) == -1)
+        LOGERR("ERROR: SENDTO: INFO:PKT");
+    usleep(50000);
+  }
+}
 
 int send_by_seq_no(int seq_no)
 {
@@ -307,12 +333,15 @@ void *tcp_server()
 
 }
 
+
+
+
 int main(int argc, char *argv[])
 {
     pthread_t tcp_thread,ack_server_thread;
     int element,ar_set;
 
-    fill_parameters(argv[1],1024,8192);
+    fill_parameters(argv[1],2048,16384);
 	 
     unchanged_batch_size = batch_size;
     char nack_array[batch_size];
@@ -337,21 +366,25 @@ int main(int argc, char *argv[])
     server_addr.sin_addr = *((struct in_addr *)host->h_addr);
     bzero(&(server_addr.sin_zero),8);
     
-    if (pthread_create(&tcp_thread, NULL, tcp_server, NULL)) {
+    /*    if (pthread_create(&tcp_thread, NULL, tcp_server, NULL)) {
         fprintf(stderr, "Error creating thread\n");
         return 1;
     }
-    
-    if (pthread_create(&ack_server_thread, NULL, ack_thread, NULL)) {
-        fprintf(stderr, "Error creating thread\n");
-        return 1;
-    }
+    */
     
 
     mmaped_file  = read_file_to_heap(argv[1]);
     if (mmaped_file == NULL) {
-        LOGERR("Client/File Read\n");
+        LOGERR("Client/File Read");
     }    
+
+    send_info_packet();
+
+    if (pthread_create(&ack_server_thread, NULL, ack_thread, NULL)) {
+        fprintf(stderr, "Error creating thread\n");
+        return 1;
+    }
+
 
     LOGDBG("Sending .....\n");
 

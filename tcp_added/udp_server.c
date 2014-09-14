@@ -212,16 +212,62 @@ int main(int argc, char *argv[]){
   client_ip = malloc(20);
   strcpy(client_ip,argv[1]);
 
+  /*
   if(pthread_create(&tcp_thread_t, NULL, tcp_thread, "tcp_thread") != 0){
     LOGERR("ERROR creating TCP thread\n");
     exit(1);
+    }*/
+
+  if((sock = socket(AF_INET, SOCK_DGRAM, 0)) == -1){
+    LOGERR("ERROR creating UDP socket\n");
+    exit(1);
+  }
+
+  server_addr.sin_family = AF_INET;
+  server_addr.sin_port = htons(UDP_PORT);
+  server_addr.sin_addr.s_addr = INADDR_ANY;
+  bzero(&(server_addr.sin_zero),8);
+
+  if (bind(sock,(struct sockaddr *)&server_addr,sizeof(struct sockaddr)) == -1){
+    LOGERR("ERROR binding UDP socket\n");
+    exit(1);
+  }
+
+  addr_len = sizeof(struct sockaddr);
+
+  printf("UDP Server Waiting for client\n");
+  fflush(stdout);
+
+  struct infoheader *info = malloc(sizeof(struct infoheader));
+
+  while (1) {
+
+    int bytes_recv,data_set = 0;
+  
+    bytes_recv = recvfrom(sock,(void*)info,sizeof(struct infoheader),0,(struct sockaddr *)&client_addr,&addr_len);
+
+    if (info->sync1 == 65536 && info->sync2 == 65536) {
+      if( data_set == 0) {
+         packet_size = info->size_pkt;
+         filesize = info->size_file;
+         batch_size = info->size_batch;
+         no_of_batches = info->no_batches;
+         no_of_packets = info->no_packets;
+         last_batch_size = info->size_last_batch;
+         last_packet_size = info->size_last_packet;
+         batch_set_flag  = 1;
+         data_set = 1;
+      }
+    } else {
+      break;
+    }
+
   }
 
   if(pthread_create(&ack_thread_t, NULL, ack_thread, "ack_thread") != 0){
     LOGERR("ERROR creating ACK thread\n");
     exit(1);
   }
-
 
   while(!batch_set_flag);
 
@@ -236,31 +282,12 @@ int main(int argc, char *argv[]){
 
   create_array_flag =1;
 
-  if((sock = socket(AF_INET, SOCK_DGRAM, 0)) == -1){
-    LOGERR("ERROR creating UDP socket\n");
-    exit(1);
-  }
-
-  server_addr.sin_family = AF_INET;
-  server_addr.sin_port = htons(UDP_PORT);
-  server_addr.sin_addr.s_addr = INADDR_ANY;
-  bzero(&(server_addr.sin_zero),8);
-
-
-  if (bind(sock,(struct sockaddr *)&server_addr,sizeof(struct sockaddr)) == -1){
-    LOGERR("ERROR binding UDP socket\n");
-    exit(1);
-  }
-
-  addr_len = sizeof(struct sockaddr);
-
-  printf("UDP Server Waiting for client\n");
-  fflush(stdout);
-
 
 
   char recv_data[packet_size+2];
   int sequence_no = 0;
+
+  printf("Entering Receiving loop\n");
 
   while (1){
 
