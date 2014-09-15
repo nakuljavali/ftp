@@ -187,7 +187,7 @@ void *ack_thread()
 
 
       i = print_array_count(temp_buff);
-      printf("COUNT :%d, previous count = %d, current batch %d, recv batch no %d, total_batches %d \n",i,previous,current_batch,received_batch_no,no_of_batches);
+      //      printf("COUNT :%d, previous count = %d, current batch %d, recv batch no %d, total_batches %d \n",i,previous,current_batch,received_batch_no,no_of_batches);
 
       if (i == 0) 
 	{
@@ -201,7 +201,7 @@ void *ack_thread()
 
 	  if(current_batch == no_of_batches-1)
 	    {
-	      batch_size = last_batch_size;
+	      //	      batch_size = last_batch_size;
 	      previous = last_batch_size;
 	    } 
 	  //	  printf("Batch changed; current batch %d \n",current_batch);

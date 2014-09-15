@@ -394,7 +394,7 @@ int main(int argc, char *argv[]){
     keep_sending = 0;
 
     memcpy(&sequence_no,recv_data,2);
-    printf("SERVER : received seq no : %d, current batch: %d, total batches: %d\n",sequence_no,current_batch,no_of_batches);
+    //    printf("SERVER : received seq no : %d, current batch: %d, total batches: %d\n",sequence_no,current_batch,no_of_batches);
 
     
 if (current_batch != no_of_batches - 1) 
