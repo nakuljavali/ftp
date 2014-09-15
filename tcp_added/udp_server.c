@@ -252,8 +252,9 @@ void *ack_thread(void *args){
     count =  print_array_count(nack_pointer);
 
     if(0 == count){
-      for(i = 0; i < 100; i++){
+      for(i = 0; i < 80; i++){
 	send_array_with_batch();
+        usleep(1000);
       }
       current_batch++;
       memset(nack_pointer, '0', batch_size);
