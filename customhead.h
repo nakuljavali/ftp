@@ -19,6 +19,8 @@ struct mytcpheader {
 };
 
 struct infoheader {
+  int sync1;
+  int sync2;
   int size_pkt;
   int size_file;
   int size_batch;

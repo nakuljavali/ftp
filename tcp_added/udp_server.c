@@ -24,12 +24,15 @@
 pthread_t tcp_thread_t;
 pthread_t ack_thread_t;
 pthread_t write_thread_t;
+pthread_t initial_thread;
 
 int stop_flag = 0;
 int current_batch = 0;
 char *nack_pointer = NULL;
 int batch_set_flag = 0;
 int create_array_flag =0;
+
+int keep_sending = 1;
 
 char *heap_mem=NULL;
 
@@ -62,6 +65,84 @@ int print_array_count(char arr[batch_size])
         }
 
   return count;
+}
+
+
+void *ini_thread()
+{
+  int nack_sock;
+  socklen_t addr_len;
+  struct sockaddr_in nack_server,nack_client;
+  int bytes_recv;
+
+  if((nack_sock = socket(AF_INET, SOCK_DGRAM, 0)) == -1){
+    LOGERR("ERROR creating UDP socket\n");
+    exit(1);
+  }
+
+  nack_client.sin_family = AF_INET;
+  nack_client.sin_port = htons(NACK_PORT_CLIENT);
+  nack_client.sin_addr.s_addr = INADDR_ANY;
+  bzero((&nack_client.sin_zero),8);
+
+  if (bind(nack_sock,(struct sockaddr *)&nack_client,sizeof(struct sockaddr)) == -1){
+    LOGERR("ERROR binding UDP socket\n");
+    exit(1);
+  }
+  addr_len = sizeof(struct sockaddr);
+
+  struct infoheader *info;
+  info = malloc(sizeof(struct infoheader));
+  struct infoheader *ack_info;
+  ack_info = malloc(sizeof(struct infoheader));
+
+  printf("waiting for bytes\n");
+
+  while(1) {
+     bytes_recv = recvfrom(nack_sock,(void*)info,sizeof(struct infoheader),0,(struct sockaddr *)&nack_client,&addr_len);
+     bytes_recv = bytes_recv;
+
+    if (info->sync1 == 65536 && info->sync2 == 65536) {
+            packet_size = info->size_pkt;
+            filesize = info->size_file;
+            batch_size = info->size_batch;
+            no_of_batches = info->no_batches;
+            no_of_packets = info->no_packets;
+            last_batch_size = info->size_last_batch;
+            last_packet_size = info->size_last_packet;
+            batch_set_flag  = 1;
+
+  LOGDBG("packtet size : %d", packet_size);
+  LOGDBG("file size : %d", filesize );
+  LOGDBG("batch size : %d", batch_size);
+  LOGDBG("no_batches : %d", no_of_batches);
+  LOGDBG("no_packets : %d", no_of_packets);
+  LOGDBG("size_last_batch : %d", last_batch_size);
+  LOGDBG("size_last_packet : %d", last_packet_size);
+
+  break;
+
+
+    }
+ }
+
+  struct hostent *client;
+  client = (struct hostent*) gethostbyname(client_ip);
+
+  nack_server.sin_family = AF_INET;
+  nack_server.sin_port = htons(NACK_PORT_SERVER);
+  nack_server.sin_addr = *((struct in_addr *)client->h_addr);
+  bzero((&nack_server.sin_zero),8);
+
+  ack_info->sync1 = 65536;
+  ack_info->sync2 = 65536;
+
+  while(keep_sending == 1){
+         sendto(acksock,(void*)ack_info, sizeof(struct infoheader),0,(struct sockaddr *)&nack_server,sizeof(struct sockaddr));
+  }
+  
+  pthread_exit(0);
+
 }
 
 void send_array_with_batch()
@@ -206,7 +287,7 @@ void *write_thread(void *args)
 {
   FILE *fp_batch = fopen("/tmp/batch.bin","w");
   assert(fp_batch != NULL);
-  assert(heap_mem != NULL);
+  //  assert(heap_mem != NULL);
 
   int written_batch = 0;
   int writing_size = batch_size*packet_size;
@@ -272,31 +353,13 @@ int main(int argc, char *argv[]){
   printf("UDP Server Waiting for client\n");
   fflush(stdout);
 
-  struct infoheader *info = malloc(sizeof(struct infoheader));
 
-  while (1) {
-
-    int bytes_recv,data_set = 0;
-  
-    bytes_recv = recvfrom(sock,(void*)info,sizeof(struct infoheader),0,(struct sockaddr *)&client_addr,&addr_len);
-
-    if (info->sync1 == 65536 && info->sync2 == 65536) {
-      if( data_set == 0) {
-         packet_size = info->size_pkt;
-         filesize = info->size_file;
-         batch_size = info->size_batch;
-         no_of_batches = info->no_batches;
-         no_of_packets = info->no_packets;
-         last_batch_size = info->size_last_batch;
-         last_packet_size = info->size_last_packet;
-         batch_set_flag  = 1;
-         data_set = 1;
-      }
-    } else {
-      break;
-    }
-
+  if(pthread_create(&initial_thread, NULL, ini_thread, NULL)) {
+    LOGERR("ERROR creating INITIAL thread");
+    exit(1);
   }
+
+  while(!batch_set_flag);
 
   if(pthread_create(&ack_thread_t, NULL, ack_thread, "ack_thread") != 0){
     LOGERR("ERROR creating ACK thread\n");
@@ -304,11 +367,10 @@ int main(int argc, char *argv[]){
   }
 
   if(pthread_create(&write_thread_t, NULL, write_thread, "write_thread") != 0){
-    LOGERR("ERROR creating ACK thread\n");
+    LOGERR("ERROR creating WRITE thread\n");
     exit(1);
   }
 
-  while(!batch_set_flag);
 
   unchanged_batch_size = batch_size;
   heap_mem = (char *)malloc((no_of_packets * packet_size));
@@ -321,17 +383,15 @@ int main(int argc, char *argv[]){
 
   create_array_flag =1;
 
-
-
   char recv_data[packet_size+2];
   int sequence_no = 0;
 
   printf("Entering Receiving loop\n");
 
   while (1){
-
-
     bytes_read = recvfrom(sock,recv_data,packet_size+2, 0,(struct sockaddr *)&client_addr, &addr_len);
+ 
+    keep_sending = 0;
 
     memcpy(&sequence_no,recv_data,2);
     printf("SERVER : received seq no : %d, current batch: %d, total batches: %d\n",sequence_no,current_batch,no_of_batches);

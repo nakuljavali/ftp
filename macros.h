@@ -9,5 +9,7 @@
 #define UDP_PORT 7654
 #define TCP_PORT 4567
 #define ACK_PORT 2115
+#define NACK_PORT_CLIENT 3115
+#define NACK_PORT_SERVER 4115
 
 #define PACKET_TIME 2500

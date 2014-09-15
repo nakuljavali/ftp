@@ -34,6 +34,7 @@ int current_batch = 0;
 int reset_flag = 0;
 
 char *nack_pointer = NULL;
+char *server_ip = NULL;
 
 int latest_count = 0;
 
@@ -64,6 +65,88 @@ int print_array_count(char arr[batch_size])
 	
 	}
   return count;
+
+}
+
+void *ini_thread()
+{
+
+  int nack_sock ;
+  struct sockaddr_in nack_server;
+
+  nack_sock = socket(AF_INET, SOCK_DGRAM, 0);
+
+  nack_server.sin_family = AF_INET;
+  nack_server.sin_port = htons(NACK_PORT_SERVER);
+  nack_server.sin_addr.s_addr = INADDR_ANY;
+  bzero(&(nack_server.sin_zero),8);
+
+  if (bind(nack_sock,(struct sockaddr *)&nack_server,sizeof(struct sockaddr)) == -1){
+     LOGERR("ERROR binding UDP socket\n");
+     exit(1);
+  }
+
+  struct infoheader *info;
+  struct infoheader *recv_info;
+  int send_count = 0;
+
+  struct timeval tv;
+  int recv_bytes;
+
+  //  socklen_t ack_size = sizeof(struct sockaddr);
+
+  tv.tv_sec = 0;
+  tv.tv_usec = 100000;
+
+  setsockopt(nack_sock, SOL_SOCKET, SO_RCVTIMEO, (char *)&tv,sizeof(struct timeval));
+
+  struct hostent *client;
+  client = (struct hostent*) gethostbyname(server_ip);
+
+  struct sockaddr_in nack_client;
+  nack_client.sin_family = AF_INET;
+  nack_client.sin_port = htons(NACK_PORT_CLIENT);
+  nack_client.sin_addr = *((struct in_addr *)client->h_addr);
+  bzero(&(nack_client.sin_zero),8);
+
+  info = malloc(sizeof(struct infoheader));
+  recv_info = malloc(sizeof(struct infoheader));
+
+  info->sync1 = 65536;
+  info->sync2 = 65536;
+  info->size_pkt = packet_size;
+  info->size_file = filesize;
+  info->size_batch = batch_size;
+  info->no_batches = no_of_batches;
+  info->no_packets = no_of_packets;
+  info->size_last_batch = last_batch_size;
+  info->size_last_packet = last_packet_size;
+
+  LOGDBG("send_info_packet");
+  socklen_t nack_size;
+  nack_size = sizeof(struct sockaddr);
+
+  while(1) {
+
+    for (send_count = 0; send_count < 20 ; send_count++) {
+      //         LOGDBG("sending info packet");
+         if ( sendto(nack_sock,(void*)info,sizeof(struct infoheader),0,(struct sockaddr *)&nack_client,sizeof(struct sockaddr)) == -1)
+     	    LOGERR("ERROR: SENDTO: INFO:PKT");
+     }
+
+     recv_bytes = recvfrom(nack_sock,(void*)recv_info,sizeof(struct infoheader),0,(struct sockaddr *)&nack_server,&nack_size);
+
+    if(recv_bytes > 0) {
+         printf("received bits???\n");
+         
+         if (recv_info->sync1 == 65536 && recv_info->sync2 == 65536) {
+	   //             printf("received info ack!!\n\n\n");
+  	     start_sending = 1;
+             pthread_exit(0);
+         }
+    }
+ 
+  }
 
 }
 
@@ -161,7 +244,7 @@ void send_info_packet()
   LOGDBG("send_info_packet");
 
   for (send_count = 0; send_count < 200 ; send_count++) {
-    LOGDBG("sending info packet");
+    //    LOGDBG("sending info packet");
     if ( sendto(sock,(void*)info,sizeof(struct infoheader),0,(struct sockaddr *)&server_addr,sizeof(struct sockaddr)) == -1)
         LOGERR("ERROR: SENDTO: INFO:PKT");
     usleep(50000);
@@ -338,11 +421,16 @@ void *tcp_server()
 
 int main(int argc, char *argv[])
 {
-    pthread_t tcp_thread,ack_server_thread;
+  //  pthread_t tcp_thread;
+    pthread_t ack_server_thread;
+    pthread_t initial_thread;
     int element,ar_set;
 
     fill_parameters(argv[1],2048,16384);
-	 
+
+    server_ip = malloc(20);
+    strcpy(server_ip,argv[2]);
+
     unchanged_batch_size = batch_size;
     char nack_array[batch_size];
 
@@ -378,13 +466,18 @@ int main(int argc, char *argv[])
         LOGERR("Client/File Read");
     }    
 
-    send_info_packet();
+    if (pthread_create(&initial_thread, NULL, ini_thread,NULL)) {
+        fprintf(stderr, "Error creating thread\n");
+        return 1;
+       
+    }
+
+    while(start_sending != 1);
 
     if (pthread_create(&ack_server_thread, NULL, ack_thread, NULL)) {
         fprintf(stderr, "Error creating thread\n");
         return 1;
     }
-
 
     LOGDBG("Sending .....\n");
 
